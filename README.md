@@ -1,23 +1,44 @@
 # skillvault
 
-Scan it. Trust it. Ship it.
-
-This repo is the public home for **skillvault**: an open-source skill manager for the multi-agent era.
-
-## What is this?
-
-Right now, AI “skills” (instruction packs, tool wrappers, workflows) are being shared like code packages — but without the supply-chain trust layer.
-
-skillvault is intended to provide:
-- **Security scanning** for skills (pattern-based + semantic)
-- **Format translation** between major agent tools (Claude Code, Cursor, agents.md-style tools, etc.)
-- **Versioning + provenance** (git-backed vault)
-- **A dashboard** for inventory, scan results, and deployments
-
-## Source brief
-
-See [`MASTER_CONTEXT.md`](./MASTER_CONTEXT.md) for the original project brief and scope.
+Local-first security scanning + normalization for AI agent skills.
 
 ## Status
+This repo currently contains the **MVP scaffold** (TypeScript workspace + CLI skeleton). Scanner rules and normalization are implemented in subsequent stories.
 
-Early scaffold. Next steps are being executed via an Antfarm `feature-dev` workflow.
+## Requirements
+- Node.js >= 18
+
+## Install
+From the repo root:
+
+```bash
+npm install
+```
+
+## Scripts
+
+```bash
+npm test
+npm run typecheck
+npm run build
+```
+
+## CLI (scaffold)
+The CLI binary is provided by `packages/cli`.
+
+```bash
+node packages/cli/dist/cli.js --help
+# or after build, via npm bin linking in your environment
+```
+
+The `scan` command is present but not implemented yet in this story.
+
+## Project brief
+See [`MASTER_CONTEXT.md`](./MASTER_CONTEXT.md).
+
+## Contributing
+- See [`AGENTS.md`](./AGENTS.md) for guardrails.
+- See [`PLAN.md`](./PLAN.md) for the MVP roadmap.
+
+## License
+MIT (see [`LICENSE`](./LICENSE)).

@@ -1,0 +1,24 @@
+{
+  "name": "@skillvault/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "skillvault": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/yargs": "^17.0.33",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}
