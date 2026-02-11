@@ -36,6 +36,11 @@ The `scan` command is present but not implemented yet in this story.
 ## Project brief
 See [`MASTER_CONTEXT.md`](./MASTER_CONTEXT.md).
 
+## Product direction (docs)
+- PRD: [`docs/PRD.md`](./docs/PRD.md)
+- Critic/security score rubric: [`docs/scoring.md`](./docs/scoring.md)
+- Audience score + use-driven trust signals: [`docs/trust-signals.md`](./docs/trust-signals.md)
+
 ## Contributing
 - See [`AGENTS.md`](./AGENTS.md) for guardrails.
 - See [`PLAN.md`](./PLAN.md) for the MVP roadmap.
