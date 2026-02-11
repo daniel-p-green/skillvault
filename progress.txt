@@ -10,6 +10,7 @@ Started: 2026-02-10 19:07 America/Chicago
 
 - Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
 - Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
+- Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
 
 ---
 
@@ -83,4 +84,35 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/src/lib/gate.ts`
   - `packages/cli/test/gate.test.ts`
 - **Learnings:** for receipt-only gating, enforce only constraints derivable from receipt metadata (file sizes/paths/capabilities); avoid content-dependent checks unless the receipt stores the required bytes.
+---
+
+## 2026-02-10 20:56 - US-013: Implement `skillvault diff` for bundle/receipt pairs with deterministic security-relevant deltas
+- Implemented `skillvault diff --a <bundle|receipt> --b <bundle|receipt> [--format json|table] [--deterministic]`.
+- Added diff engine that accepts bundle or receipt JSON inputs; bundles are converted to receipts in-memory for canonical comparisons.
+- Diff report includes deterministic:
+  - `file_diffs` (added/removed/modified/unchanged by per-file sha256)
+  - `capability_deltas` (added/removed)
+  - `finding_deltas` (added/removed by `rule_id` when available)
+- Updated schema docs for `DiffReport`.
+- Files changed:
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/lib/diff.ts`
+  - `packages/cli/test/diff.test.ts`
+  - `docs/schemas.md`
+- **Learnings:** for CLI commands that accept multiple input types, validate by minimal structural checks (receipt-like JSON) before falling back to bundle scanning.
+---
+
+## 2026-02-11 21:10 - US-014: Implement `skillvault export` to strict_v0 zip and validate constraints
+- Implemented `skillvault export <bundle_dir> --out bundle.zip --profile strict_v0`.
+- Export enforces strict_v0 hygiene: no symlinks, safe/relative paths only, exactly-one-manifest (SKILL.md/skill.md), deterministic entry ordering, and policy/profile size+token constraints.
+- After writing the zip, re-opens it and re-validates paths + constraints before exiting 0.
+- Added new reason codes for strict bundle hygiene.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/export.ts`
+  - `packages/cli/test/contracts.test.ts`
+  - `packages/cli/test/export.test.ts`
+- **Learnings:** On default macOS case-insensitive filesystems, you can't create both `SKILL.md` and `skill.md` in the same directory; tests for manifest-count violations should cover the missing-manifest case instead of relying on case-only filename differences.
 ---

@@ -9,6 +9,7 @@ import { generateReceipt } from './lib/receipt.js';
 import { verifyBundle } from './lib/verify.js';
 import { gateFromBundle, gateFromReceipt } from './lib/gate.js';
 import { diffInputs } from './lib/diff.js';
+import { exportBundleToZip } from './lib/export.js';
 
 export async function main(argv = process.argv): Promise<number> {
   // `process.exitCode` persists across multiple `main()` calls in the same process (tests).
@@ -258,6 +259,59 @@ export async function main(argv = process.argv): Promise<number> {
             process.stdout.write(json);
           }
         }
+      }
+    )
+    .command(
+      'export <bundle_dir>',
+      'Export a bundle directory to a strict_v0-compliant zip and validate it',
+      (cmd) =>
+        cmd
+          .positional('bundle_dir', {
+            type: 'string',
+            describe: 'Path to bundle directory (not a zip)',
+            demandOption: true
+          })
+          .option('out', {
+            type: 'string',
+            demandOption: true,
+            describe: 'Path to write bundle.zip'
+          })
+          .option('profile', {
+            type: 'string',
+            default: 'strict_v0',
+            describe: 'Export profile name (v0.1 supports strict_v0)'
+          }),
+      async (args) => {
+        const report = await exportBundleToZip(String(args.bundle_dir), {
+          outPath: String(args.out),
+          policyPath: args.policy ? String(args.policy) : undefined,
+          profile: String(args.profile),
+          deterministic: Boolean(args.deterministic)
+        });
+
+        if (args.format === 'table') {
+          const lines: string[] = [];
+          lines.push(`validated: ${report.validated ? 'YES' : 'NO'}`);
+          lines.push(`bundle_sha256: ${report.bundle_sha256}`);
+          lines.push(`out_path: ${report.out_path}`);
+          lines.push(`files: ${report.files.length}`);
+          lines.push(`findings: ${report.findings.length}`);
+          for (const f of report.findings) {
+            lines.push(`- [${f.severity}] ${f.code}${f.path ? ` (${f.path})` : ''}: ${f.message}`);
+          }
+          const out = lines.join('\n') + '\n';
+          if (args.out) {
+            // NOTE: For export, --out is reserved for zip path; table/json always go to stdout.
+            process.stdout.write(out);
+          } else {
+            process.stdout.write(out);
+          }
+        } else {
+          const json = JSON.stringify(report, null, 2) + '\n';
+          process.stdout.write(json);
+        }
+
+        process.exitCode = report.validated ? 0 : 1;
       }
     )
     .demandCommand(1, 'Provide a command');

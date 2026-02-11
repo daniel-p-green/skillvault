@@ -46,7 +46,11 @@ export const ReasonCodes = [
   'CONSTRAINT_BUNDLE_SIZE_LIMIT',
   'CONSTRAINT_FILE_SIZE_LIMIT',
   'CONSTRAINT_TOKEN_LIMIT_WARN',
-  'CONSTRAINT_TOKEN_LIMIT_FAIL'
+  'CONSTRAINT_TOKEN_LIMIT_FAIL',
+
+  // Strict bundle hygiene
+  'CONSTRAINT_UNSAFE_PATH',
+  'CONSTRAINT_SYMLINK_FORBIDDEN'
 ] as const;
 
 export type ReasonCode = (typeof ReasonCodes)[number];
