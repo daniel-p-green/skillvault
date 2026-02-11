@@ -8,10 +8,33 @@ import fs from 'node:fs/promises';
 import { generateReceipt } from './lib/receipt.js';
 
 export async function main(argv = process.argv): Promise<number> {
+  // `process.exitCode` persists across multiple `main()` calls in the same process (tests).
+  // Reset it so one command's exit code doesn't leak into the next.
+  process.exitCode = 0;
+
   const parser = yargs(hideBin(argv))
     .scriptName('skillvault')
     .strict()
     .help()
+    // Shared options (accepted by all commands).
+    .option('policy', {
+      type: 'string',
+      describe: 'Path to policy.yaml'
+    })
+    .option('format', {
+      choices: ['json', 'table'] as const,
+      default: 'json',
+      describe: 'Output format'
+    })
+    .option('out', {
+      type: 'string',
+      describe: 'Write output to this file (default: stdout)'
+    })
+    .option('deterministic', {
+      type: 'boolean',
+      default: false,
+      describe: 'Freeze timestamps and enforce stable ordering for golden outputs'
+    })
     .command(
       'scan <bundle>',
       'Scan a bundle for suspicious patterns (not implemented in this story)',
@@ -30,25 +53,11 @@ export async function main(argv = process.argv): Promise<number> {
       'receipt <bundle>',
       'Generate an offline-verifiable receipt JSON for a bundle',
       (cmd) =>
-        cmd
-          .positional('bundle', {
-            type: 'string',
-            describe: 'Path to bundle directory or bundle.zip',
-            demandOption: true
-          })
-          .option('policy', {
-            type: 'string',
-            describe: 'Path to policy.yaml'
-          })
-          .option('out', {
-            type: 'string',
-            describe: 'Write receipt JSON to this file (default: stdout)'
-          })
-          .option('deterministic', {
-            type: 'boolean',
-            default: false,
-            describe: 'Freeze timestamps and enforce stable ordering for golden outputs'
-          }),
+        cmd.positional('bundle', {
+          type: 'string',
+          describe: 'Path to bundle directory or bundle.zip',
+          demandOption: true
+        }),
       async (args) => {
         const receipt = await generateReceipt(String(args.bundle), {
           policyPath: args.policy ? String(args.policy) : undefined,

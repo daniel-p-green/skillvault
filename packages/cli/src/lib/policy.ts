@@ -1,8 +1,11 @@
-import fs from 'node:fs/promises';
-import YAML from 'yaml';
 import type { Finding, PolicyDecision, ReasonCode, RiskScore, Verdict, VerdictThresholds } from '../contracts.js';
 import { CONTRACT_VERSION, DEFAULT_THRESHOLDS, verdictFromRiskScore } from '../contracts.js';
+import { loadPolicyV1 } from './policy-loader.js';
 
+/**
+ * NOTE: v0.1 policy enforcement is implemented incrementally.
+ * For now, the receipt pipeline uses only `gates`.
+ */
 export interface PolicyConfig {
   gates?: {
     max_risk_score?: number;
@@ -11,25 +14,10 @@ export interface PolicyConfig {
 }
 
 export async function loadPolicy(policyPath?: string): Promise<PolicyConfig | undefined> {
-  if (!policyPath) return undefined;
-  const raw = await fs.readFile(policyPath, 'utf8');
-  const parsed = YAML.parse(raw) as unknown;
-  if (!parsed || typeof parsed !== 'object') return undefined;
-
-  const obj = parsed as Record<string, unknown>;
-  const gates = obj.gates as Record<string, unknown> | undefined;
-
-  const allow = Array.isArray(gates?.allow_verdicts)
-    ? (gates?.allow_verdicts.filter((v) => v === 'PASS' || v === 'WARN' || v === 'FAIL') as Verdict[])
-    : undefined;
-
-  const max = typeof gates?.max_risk_score === 'number' ? gates.max_risk_score : undefined;
-
+  const policy = await loadPolicyV1(policyPath);
+  if (!policy) return undefined;
   return {
-    gates: {
-      max_risk_score: max,
-      allow_verdicts: allow
-    }
+    gates: policy.gates
   };
 }
 

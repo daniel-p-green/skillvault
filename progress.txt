@@ -6,6 +6,7 @@ Started: 2026-02-10 19:07 America/Chicago
 ## Codebase Patterns
 - Keep JSON contract fields explicitly versioned (`contract_version`) and export stable constants (e.g., `CONTRACT_VERSION`, `ReasonCodes`) to prevent silent drift.
 - For contract stability tests in Vitest, prefer explicit list equality (not snapshots) so additive-only changes are intentional.
+- When testing a yargs CLI by calling `main()` multiple times in one process, reset `process.exitCode` at the start of `main()` to avoid exit-code leakage between tests.
 
 - Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
 - Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
@@ -37,4 +38,21 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/receipt.test.ts`
   - `docs/schemas.md`
 - **Learnings:** prefer a dedicated `readBundle()` abstraction early so later commands (scan/verify/diff/export) share deterministic traversal and hashing.
+---
+
+## 2026-02-10 20:31 - US-001: Add policy.v1 contract + shared CLI options (no behavior change)
+- Added `policy.v1` TypeScript contract types (gates, capability rules, constraints, profiles).
+- Added `PolicyLoadError` + `parsePolicyV1()`/`loadPolicyV1()` loader stub with ReasonCode mapping for parse/schema failures.
+- Made CLI accept shared flags globally across commands: `--policy`, `--format`, `--out`, `--deterministic`.
+- Fixed testability bug where `process.exitCode` leaked between multiple `main()` calls.
+- Files changed:
+  - `packages/cli/src/policy-v1.ts`
+  - `packages/cli/src/lib/policy-loader.ts`
+  - `packages/cli/src/lib/policy.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/index.ts`
+  - `packages/cli/test/{policy-v1,cli-options}.test.ts`
+  - `packages/cli/test/contracts.test.ts`
+- **Learnings:** for strict yargs CLIs, define shared options at the parser level so every command accepts them without per-command duplication.
 ---
