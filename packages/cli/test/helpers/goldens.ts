@@ -11,11 +11,23 @@ export async function runCliToFile(args: string[], outPath: string): Promise<num
   return main(['node', 'skillvault', ...args, '--out', outPath]);
 }
 
+export function shouldRegenGoldens(): boolean {
+  return process.env.REGEN_GOLDENS === '1';
+}
+
 export async function expectGolden(outPath: string, goldenPath: string): Promise<void> {
-  const [actual, expected] = await Promise.all([fs.readFile(outPath, 'utf8'), fs.readFile(goldenPath, 'utf8')]);
+  const actual = await fs.readFile(outPath, 'utf8');
+
+  if (shouldRegenGoldens()) {
+    await fs.mkdir(path.dirname(goldenPath), { recursive: true });
+    await fs.writeFile(goldenPath, actual, 'utf8');
+    return;
+  }
+
+  const expected = await fs.readFile(goldenPath, 'utf8');
   if (actual !== expected) {
     // Print a minimal hint (full diff is too noisy).
-    const hint = `Golden mismatch:\n  out: ${outPath}\n  golden: ${goldenPath}\n`;
+    const hint = `Golden mismatch:\n  out: ${outPath}\n  golden: ${goldenPath}\n\nTo regenerate: REGEN_GOLDENS=1 npm test`;
     throw new Error(hint);
   }
 }
