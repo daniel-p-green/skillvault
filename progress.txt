@@ -71,3 +71,16 @@ Started: 2026-02-10 19:07 America/Chicago
   - `.gitignore`
 - **Learnings:** clean up `mkdtemp()` artifacts in Vitest tests (and/or ignore `test-tmp-*`) to keep `git status` clean.
 ---
+
+## 2026-02-11 20:52 - US-012: Implement `skillvault gate` (receipt-only or bundle input)
+- Implemented `skillvault gate (--receipt receipt.json | <bundle>) --policy policy.yaml [--format json|table] [--deterministic]`.
+- Added deterministic gating engine that can:
+  - gate a bundle by scanning then applying `policy.v1` gates/constraints/capability rules
+  - gate a receipt by applying the same rules to stored receipt scan + file metadata (without reading bundle contents)
+- Gate output is a stable `GateReport` with exit code 0 on PASS/WARN and 1 on any error-level findings.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/lib/gate.ts`
+  - `packages/cli/test/gate.test.ts`
+- **Learnings:** for receipt-only gating, enforce only constraints derivable from receipt metadata (file sizes/paths/capabilities); avoid content-dependent checks unless the receipt stores the required bytes.
+---

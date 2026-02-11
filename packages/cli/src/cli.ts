@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 
 import { generateReceipt } from './lib/receipt.js';
 import { verifyBundle } from './lib/verify.js';
+import { gateFromBundle, gateFromReceipt } from './lib/gate.js';
 
 export async function main(argv = process.argv): Promise<number> {
   // `process.exitCode` persists across multiple `main()` calls in the same process (tests).
@@ -122,6 +123,74 @@ export async function main(argv = process.argv): Promise<number> {
           lines.push(`receipt_bundle_sha256: ${report.receipt.bundle_sha256}`);
           lines.push(`verdict: ${report.policy.verdict}`);
           lines.push(`risk_score_total: ${report.policy.risk_score.total}`);
+          lines.push(`findings: ${report.findings.length}`);
+          for (const f of report.findings) {
+            lines.push(`- [${f.severity}] ${f.code}${f.path ? ` (${f.path})` : ''}: ${f.message}`);
+          }
+          const out = lines.join('\n') + '\n';
+          if (args.out) {
+            await fs.writeFile(String(args.out), out, 'utf8');
+          } else {
+            process.stdout.write(out);
+          }
+        } else {
+          const json = JSON.stringify(report, null, 2) + '\n';
+          if (args.out) {
+            await fs.writeFile(String(args.out), json, 'utf8');
+          } else {
+            process.stdout.write(json);
+          }
+        }
+
+        process.exitCode = exitCode;
+      }
+    )
+    .command(
+      'gate [bundle]',
+      'Apply a policy to either a previously generated receipt or a fresh bundle scan',
+      (cmd) =>
+        cmd
+          .positional('bundle', {
+            type: 'string',
+            describe: 'Path to bundle directory or bundle.zip'
+          })
+          .option('receipt', {
+            type: 'string',
+            describe: 'Path to receipt.json (skip scanning and use receipt scan summary)'
+          }),
+      async (args) => {
+        if (!args.policy) {
+          console.error('gate requires --policy policy.yaml');
+          process.exitCode = 2;
+          return;
+        }
+
+        const receiptPath = args.receipt ? String(args.receipt) : undefined;
+        const bundlePath = args.bundle ? String(args.bundle) : undefined;
+
+        if (!receiptPath && !bundlePath) {
+          console.error('gate requires either --receipt receipt.json or a <bundle> argument');
+          process.exitCode = 2;
+          return;
+        }
+
+        if (receiptPath && bundlePath) {
+          console.error('gate expects exactly one input: either --receipt or <bundle> (not both)');
+          process.exitCode = 2;
+          return;
+        }
+
+        const deterministic = Boolean(args.deterministic);
+
+        const { report, exitCode } = receiptPath
+          ? await gateFromReceipt(receiptPath, { policyPath: String(args.policy), deterministic })
+          : await gateFromBundle(String(bundlePath), { policyPath: String(args.policy), deterministic });
+
+        if (args.format === 'table') {
+          const lines: string[] = [];
+          lines.push(`verdict: ${report.verdict}`);
+          lines.push(`risk_score_total: ${report.risk_score.total}`);
+          lines.push(`policy_verdict: ${report.policy.verdict}`);
           lines.push(`findings: ${report.findings.length}`);
           for (const f of report.findings) {
             lines.push(`- [${f.severity}] ${f.code}${f.path ? ` (${f.path})` : ''}: ${f.message}`);
