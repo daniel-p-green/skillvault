@@ -1,0 +1,35 @@
+{
+  "contract_version": "0.1",
+  "created_at": "1970-01-01T00:00:00.000Z",
+  "bundle_sha256": "298629b5f6f3572f8c6139352de3bb5c1a8457ea7af6b6fec68156c5f0f1bcb8",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "size": 272,
+      "sha256": "6c5c756b4b134d1f7c3dd166d65dc7fea4ea6f7d623debb6bbe84e772b3a7458"
+    },
+    {
+      "path": "tool.js",
+      "size": 236,
+      "sha256": "d17e431dc4055f306949b3bb92ef590304076fedeeb0c322ecb22a41da2d47c4"
+    }
+  ],
+  "manifest": {
+    "path": "SKILL.md",
+    "size": 272,
+    "sha256": "6c5c756b4b134d1f7c3dd166d65dc7fea4ea6f7d623debb6bbe84e772b3a7458"
+  },
+  "capabilities": [],
+  "risk_score": {
+    "base_risk": 0,
+    "change_risk": 0,
+    "policy_delta": 0,
+    "total": 0
+  },
+  "summary": {
+    "file_count": 2,
+    "total_bytes": 508,
+    "deterministic": true
+  },
+  "findings": []
+}

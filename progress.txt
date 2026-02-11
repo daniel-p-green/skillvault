@@ -11,6 +11,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
 - Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
 - Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
+- Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
 
 ---
 
@@ -115,4 +116,23 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/contracts.test.ts`
   - `packages/cli/test/export.test.ts`
 - **Learnings:** On default macOS case-insensitive filesystems, you can't create both `SKILL.md` and `skill.md` in the same directory; tests for manifest-count violations should cover the missing-manifest case instead of relying on case-only filename differences.
+---
+
+## 2026-02-10 21:16 - US-015: Add fixtures, goldens, and deterministic golden-test harness for scan/receipt/verify/diff
+- Added a second fixture bundle (`malicious-skill`) and committed deterministic JSON goldens for scan/receipt/verify/diff.
+- Implemented a Vitest golden-test harness that runs the CLI with `--deterministic` and compares JSON outputs byte-for-byte against committed goldens.
+- Added a tamper regression test asserting verify fails with stable reason codes when any file is modified.
+- Wired up `skillvault scan` CLI (it previously existed in `lib/scan.ts` but the command was stubbed).
+- Added a GitHub Actions CI workflow that runs build/typecheck/test (goldens included).
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/test/fixtures/malicious-skill/**`
+  - `packages/cli/test/goldens/**`
+  - `packages/cli/test/helpers/goldens.ts`
+  - `packages/cli/test/goldens.test.ts`
+  - `packages/cli/test/cli-options.test.ts`
+  - `packages/cli/package.json`
+  - `package.json`
+  - `.github/workflows/ci.yml`
+- **Learnings:** Keep deterministic goldens as literal CLI output strings (pretty JSON + trailing newline) so diffs are immediately actionable.
 ---

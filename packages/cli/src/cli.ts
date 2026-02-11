@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 
 import { generateReceipt } from './lib/receipt.js';
+import { scanBundle } from './lib/scan.js';
 import { verifyBundle } from './lib/verify.js';
 import { gateFromBundle, gateFromReceipt } from './lib/gate.js';
 import { diffInputs } from './lib/diff.js';
@@ -41,16 +42,39 @@ export async function main(argv = process.argv): Promise<number> {
     })
     .command(
       'scan <bundle>',
-      'Scan a bundle for suspicious patterns (not implemented in this story)',
+      'Scan a bundle and emit a deterministic scan report',
       (cmd) =>
         cmd.positional('bundle', {
           type: 'string',
           describe: 'Path to bundle directory or bundle.zip',
           demandOption: true
         }),
-      async () => {
-        console.error('scan is not implemented yet');
-        process.exitCode = 2;
+      async (args) => {
+        const report = await scanBundle(String(args.bundle), { deterministic: Boolean(args.deterministic) });
+
+        if (args.format === 'table') {
+          const lines: string[] = [];
+          lines.push(`bundle_sha256: ${report.bundle_sha256}`);
+          lines.push(`files: ${report.summary.file_count}`);
+          lines.push(`total_bytes: ${report.summary.total_bytes}`);
+          lines.push(`findings: ${report.findings.length}`);
+          for (const f of report.findings) {
+            lines.push(`- [${f.severity}] ${f.code}${f.path ? ` (${f.path})` : ''}: ${f.message}`);
+          }
+          const out = lines.join('\n') + '\n';
+          if (args.out) {
+            await fs.writeFile(String(args.out), out, 'utf8');
+          } else {
+            process.stdout.write(out);
+          }
+        } else {
+          const json = JSON.stringify(report, null, 2) + '\n';
+          if (args.out) {
+            await fs.writeFile(String(args.out), json, 'utf8');
+          } else {
+            process.stdout.write(json);
+          }
+        }
       }
     )
     .command(

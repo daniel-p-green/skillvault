@@ -1,0 +1,50 @@
+{
+  "contract_version": "0.1",
+  "created_at": "1970-01-01T00:00:00.000Z",
+  "a": {
+    "bundle_sha256": "cc9d123fd6f944034c45aa2d8c0b519e7c4c506ae2042d242aac5e3bbeab3d5e"
+  },
+  "b": {
+    "bundle_sha256": "298629b5f6f3572f8c6139352de3bb5c1a8457ea7af6b6fec68156c5f0f1bcb8"
+  },
+  "file_diffs": [
+    {
+      "path": "SKILL.md",
+      "change": "modified",
+      "a": {
+        "sha256": "1b0d0b0c6b5ceb7fc26ea526a0f29f17fcd50f990159a8ef24fbc2ec448480a0",
+        "size": 39
+      },
+      "b": {
+        "sha256": "6c5c756b4b134d1f7c3dd166d65dc7fea4ea6f7d623debb6bbe84e772b3a7458",
+        "size": 272
+      }
+    },
+    {
+      "path": "tool.js",
+      "change": "modified",
+      "a": {
+        "sha256": "438e4ea035b9923860eb74bf47196b6ab805cb00ab04978d2285d9f201706df8",
+        "size": 43
+      },
+      "b": {
+        "sha256": "d17e431dc4055f306949b3bb92ef590304076fedeeb0c322ecb22a41da2d47c4",
+        "size": 236
+      }
+    }
+  ],
+  "capability_deltas": {
+    "added": [],
+    "removed": []
+  },
+  "finding_deltas": {
+    "added": [],
+    "removed": []
+  },
+  "summary": {
+    "added": 0,
+    "removed": 0,
+    "modified": 2,
+    "unchanged": 0
+  }
+}

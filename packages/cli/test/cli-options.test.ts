@@ -6,7 +6,7 @@ import { main } from '../src/cli.js';
 const FIXTURES = path.resolve(process.cwd(), 'test', 'fixtures');
 
 describe('shared CLI options', () => {
-  it('accepts common flags on scan (even if scan is unimplemented)', async () => {
+  it('accepts common flags on scan', async () => {
     const bundleDir = path.join(FIXTURES, 'benign-skill');
 
     const code = await main([
@@ -23,8 +23,7 @@ describe('shared CLI options', () => {
       '--deterministic'
     ]);
 
-    // Unimplemented scan returns exit code 2, but should not fail argument parsing.
-    expect(code).toBe(2);
+    expect(code).toBe(0);
   });
 
   it('accepts --format on receipt (even if currently unused)', async () => {
