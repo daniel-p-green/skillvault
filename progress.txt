@@ -131,8 +131,30 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/helpers/goldens.ts`
   - `packages/cli/test/goldens.test.ts`
   - `packages/cli/test/cli-options.test.ts`
+  - `packages/cli/test/cli-options.test.ts`
   - `packages/cli/package.json`
   - `package.json`
   - `.github/workflows/ci.yml`
 - **Learnings:** Keep deterministic goldens as literal CLI output strings (pretty JSON + trailing newline) so diffs are immediately actionable.
+---
+
+## 2026-02-11 21:24 - US-016: Add CI workflow to enforce typecheck, tests, and golden determinism
+- Ensured golden tests are non-destructive by default, and only regenerate committed goldens when `REGEN_GOLDENS=1`.
+- Added explicit Vitest coverage for the golden harness behavior (no-regenerate default + regen flag).
+- Files changed:
+  - `packages/cli/test/helpers/goldens.ts`
+  - `packages/cli/test/golden-harness.test.ts`
+- **Learnings:** Gate golden regeneration behind an explicit env var so CI can enforce byte-for-byte determinism.
+---
+
+## 2026-02-10 21:32 - US-017: Write command reference, policy reference, and scoring rubric docs
+- Updated `README.md` with a v0.1 quickstart and all must-ship commands (with key flags).
+- Added `docs/cli.md` with per-command synopsis, conventions, and examples for JSON/table output.
+- Added `docs/policy.md` documenting the policy.v1 YAML schema, a minimal policy example, and profile usage.
+- Updated `docs/scoring.md` and `docs/PRD.md` to match v0.1 `risk_score` components and PASS/WARN/FAIL thresholds.
+- Files changed:
+  - `README.md`
+  - `docs/{cli,policy,scoring,PRD}.md`
+  - `packages/cli/test/docs-smoke.test.ts`
+- **Learnings:** For doc smoke tests, keep assertions string-based (command names + required files) rather than snapshots so future doc edits don’t cause noisy golden churn.
 ---
