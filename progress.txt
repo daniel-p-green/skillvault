@@ -1,0 +1,22 @@
+# Progress Log
+Run: 300ed9e4-b9f5-4ec0-b1ad-b3a93d41de43
+Task: SkillVault v0.1 (WEEKEND MVP) — SKILL.md trust layer (CLI-first; no installer/registry/marketplace).
+Started: 2026-02-10 19:07 America/Chicago
+
+## Codebase Patterns
+- Keep JSON contract fields explicitly versioned (`contract_version`) and export stable constants (e.g., `CONTRACT_VERSION`, `ReasonCodes`) to prevent silent drift.
+- For contract stability tests in Vitest, prefer explicit list equality (not snapshots) so additive-only changes are intentional.
+
+---
+
+## 2026-02-10 19:17 - US-001: Define v0.1 JSON contracts (types + docs) for scan/receipt/verify/diff
+- Added canonical TypeScript contracts module for v0.1 JSON outputs (ScanReport/Receipt/VerifyReport/GateReport/DiffReport + supporting types).
+- Documented the JSON shapes, verdict thresholds, and stable reason codes in `docs/schemas.md`.
+- Added Vitest tests that lock down contract version, verdict thresholds, risk→verdict mapping, and the additive-only reason code list.
+- Files changed:
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/index.ts`
+  - `packages/cli/test/contracts.test.ts`
+  - `docs/schemas.md`
+- **Learnings:** codify reason codes as exported string arrays + tests to ensure downstream fixtures remain stable.
+---
