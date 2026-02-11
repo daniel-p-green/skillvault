@@ -7,6 +7,9 @@ Started: 2026-02-10 19:07 America/Chicago
 - Keep JSON contract fields explicitly versioned (`contract_version`) and export stable constants (e.g., `CONTRACT_VERSION`, `ReasonCodes`) to prevent silent drift.
 - For contract stability tests in Vitest, prefer explicit list equality (not snapshots) so additive-only changes are intentional.
 
+- Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
+- Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
+
 ---
 
 ## 2026-02-10 19:17 - US-001: Define v0.1 JSON contracts (types + docs) for scan/receipt/verify/diff
@@ -19,4 +22,19 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/contracts.test.ts`
   - `docs/schemas.md`
 - **Learnings:** codify reason codes as exported string arrays + tests to ensure downstream fixtures remain stable.
+---
+
+## 2026-02-10 20:21 - US-010: Implement `skillvault receipt` (offline-verifiable receipt JSON)
+- Implemented `skillvault receipt <bundle_dir|bundle.zip> [--policy policy.yaml] [--out receipt.json] [--deterministic]`.
+- Added minimal deterministic scan pipeline (bundle read + per-file sha256 + bundle_sha256 + SKILL.md manifest count check) as the single source of truth for receipt generation.
+- Receipt now includes `scanner` (name + version), bundle hash + file hashes, scan summary, and policy decision.
+- Updated schema docs to reflect the new `scanner` field.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/{bundle,hash,policy,scan,receipt,time}.ts`
+  - `packages/cli/test/fixtures/**`
+  - `packages/cli/test/receipt.test.ts`
+  - `docs/schemas.md`
+- **Learnings:** prefer a dedicated `readBundle()` abstraction early so later commands (scan/verify/diff/export) share deterministic traversal and hashing.
 ---
