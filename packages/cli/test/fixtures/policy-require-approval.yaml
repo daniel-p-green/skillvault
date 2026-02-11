@@ -1,0 +1,4 @@
+policy_version: v1
+capabilities:
+  network:
+    mode: require_approval

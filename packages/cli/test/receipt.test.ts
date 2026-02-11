@@ -51,26 +51,31 @@ describe('skillvault receipt', () => {
     const policyPath = path.join(FIXTURES, 'policy-pass.yaml');
 
     const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
-    const outPath = path.join(tmpDir, 'receipt.json');
 
-    const code = await main([
-      'node',
-      'skillvault',
-      'receipt',
-      bundleDir,
-      '--policy',
-      policyPath,
-      '--deterministic',
-      '--out',
-      outPath
-    ]);
+    try {
+      const outPath = path.join(tmpDir, 'receipt.json');
 
-    expect(code).toBe(0);
+      const code = await main([
+        'node',
+        'skillvault',
+        'receipt',
+        bundleDir,
+        '--policy',
+        policyPath,
+        '--deterministic',
+        '--out',
+        outPath
+      ]);
 
-    const raw = await fs.readFile(outPath, 'utf8');
-    const parsed = JSON.parse(raw) as { bundle_sha256: string; created_at: string };
+      expect(code).toBe(0);
 
-    expect(parsed.created_at).toBe(DETERMINISTIC_CREATED_AT_ISO);
-    expect(parsed.bundle_sha256).toMatch(/^[a-f0-9]{64}$/);
+      const raw = await fs.readFile(outPath, 'utf8');
+      const parsed = JSON.parse(raw) as { bundle_sha256: string; created_at: string };
+
+      expect(parsed.created_at).toBe(DETERMINISTIC_CREATED_AT_ISO);
+      expect(parsed.bundle_sha256).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

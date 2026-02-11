@@ -56,3 +56,18 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/contracts.test.ts`
 - **Learnings:** for strict yargs CLIs, define shared options at the parser level so every command accepts them without per-command duplication.
 ---
+
+## 2026-02-10 20:42 - US-011: Implement `skillvault verify` (hard-fail on hash mismatch and policy/constraints violations)
+- Added `skillvault verify <bundle> --receipt receipt.json [--policy policy.yaml] [--offline] [--format json|table] [--deterministic]`.
+- Verify recomputes per-file sha256 + bundle_sha256 and hard-fails on missing/extra files, file hash mismatch, and bundle hash mismatch with stable reason codes.
+- Enforced policy.v1 constraints/capability rules deterministically (including v0.1 placeholder approvals via REQUIRED_APPROVAL_MISSING).
+- Added tests covering pass case, tamper detection, required-approval failures, and table output; ensured tests clean up temp dirs.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/verify.ts`
+  - `packages/cli/test/{contracts,receipt,verify}.test.ts`
+  - `packages/cli/test/fixtures/policy-require-approval.yaml`
+  - `.gitignore`
+- **Learnings:** clean up `mkdtemp()` artifacts in Vitest tests (and/or ignore `test-tmp-*`) to keep `git status` clean.
+---

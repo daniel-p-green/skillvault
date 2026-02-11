@@ -3,6 +3,7 @@ node_modules
 dist
 coverage
 .vitest
+test-tmp-*
 *.log
 .env
 .env.*
