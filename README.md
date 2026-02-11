@@ -1,19 +1,86 @@
 # skillvault
 
-Local-first security scanning + normalization for AI agent skills.
+Local-first trust receipts + deterministic policy gating for **SKILL.md bundles**.
 
-## Status
-This repo currently contains the **MVP scaffold** (TypeScript workspace + CLI skeleton). Scanner rules and normalization are implemented in subsequent stories.
+v0.1 decisions:
+- **SKILL.md bundles only** (exactly one `SKILL.md`/`skill.md` manifest)
+- Receipts are **offline-verifiable by deterministic hashing** (no signatures in v0.1)
+- Scanning/scoring is **deterministic + rule-based** (no LLM scoring path)
 
 ## Requirements
 - Node.js >= 18
 
 ## Install
-From the repo root:
 
 ```bash
 npm install
 ```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Quickstart
+
+Run the CLI via the built JS:
+
+```bash
+node packages/cli/dist/cli.js --help
+```
+
+Scan a bundle (directory or zip):
+
+```bash
+node packages/cli/dist/cli.js scan <bundle_dir|bundle.zip> --format table
+```
+
+Generate a receipt:
+
+```bash
+node packages/cli/dist/cli.js receipt <bundle_dir|bundle.zip> --out receipt.json
+```
+
+Verify a bundle matches a receipt (offline):
+
+```bash
+node packages/cli/dist/cli.js verify <bundle_dir|bundle.zip> --receipt receipt.json --offline --format table
+```
+
+Apply a policy gate:
+
+```bash
+node packages/cli/dist/cli.js gate <bundle_dir|bundle.zip> --policy policy.yaml --format table
+# or gate an existing receipt:
+node packages/cli/dist/cli.js gate --receipt receipt.json --policy policy.yaml --format table
+```
+
+Diff two bundles/receipts:
+
+```bash
+node packages/cli/dist/cli.js diff --a <bundle|receipt> --b <bundle|receipt> --format table
+```
+
+Export a directory bundle to a strict zip:
+
+```bash
+node packages/cli/dist/cli.js export <bundle_dir> --out bundle.zip --policy policy.yaml --profile strict_v0
+```
+
+Deterministic mode (for goldens / CI):
+
+```bash
+node packages/cli/dist/cli.js scan <bundle> --format json --deterministic
+```
+
+## Command reference
+
+- CLI: [`docs/cli.md`](./docs/cli.md)
+- Policy schema: [`docs/policy.md`](./docs/policy.md)
+- Risk scoring rubric: [`docs/scoring.md`](./docs/scoring.md)
+- JSON output contracts: [`docs/schemas.md`](./docs/schemas.md)
+- PRD: [`docs/PRD.md`](./docs/PRD.md)
 
 ## Scripts
 
@@ -22,28 +89,6 @@ npm test
 npm run typecheck
 npm run build
 ```
-
-## CLI (scaffold)
-The CLI binary is provided by `packages/cli`.
-
-```bash
-node packages/cli/dist/cli.js --help
-# or after build, via npm bin linking in your environment
-```
-
-The `scan` command is present but not implemented yet in this story.
-
-## Project brief
-See [`MASTER_CONTEXT.md`](./MASTER_CONTEXT.md).
-
-## Product direction (docs)
-- PRD: [`docs/PRD.md`](./docs/PRD.md)
-- Critic/security score rubric: [`docs/scoring.md`](./docs/scoring.md)
-- Audience score + use-driven trust signals: [`docs/trust-signals.md`](./docs/trust-signals.md)
-
-## Contributing
-- See [`AGENTS.md`](./AGENTS.md) for guardrails.
-- See [`PLAN.md`](./PLAN.md) for the MVP roadmap.
 
 ## License
 MIT (see [`LICENSE`](./LICENSE)).

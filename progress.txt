@@ -1,0 +1,160 @@
+# Progress Log
+Run: 300ed9e4-b9f5-4ec0-b1ad-b3a93d41de43
+Task: SkillVault v0.1 (WEEKEND MVP) — SKILL.md trust layer (CLI-first; no installer/registry/marketplace).
+Started: 2026-02-10 19:07 America/Chicago
+
+## Codebase Patterns
+- Keep JSON contract fields explicitly versioned (`contract_version`) and export stable constants (e.g., `CONTRACT_VERSION`, `ReasonCodes`) to prevent silent drift.
+- For contract stability tests in Vitest, prefer explicit list equality (not snapshots) so additive-only changes are intentional.
+- When testing a yargs CLI by calling `main()` multiple times in one process, reset `process.exitCode` at the start of `main()` to avoid exit-code leakage between tests.
+
+- Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
+- Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
+- Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
+- Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
+
+---
+
+## 2026-02-10 19:17 - US-001: Define v0.1 JSON contracts (types + docs) for scan/receipt/verify/diff
+- Added canonical TypeScript contracts module for v0.1 JSON outputs (ScanReport/Receipt/VerifyReport/GateReport/DiffReport + supporting types).
+- Documented the JSON shapes, verdict thresholds, and stable reason codes in `docs/schemas.md`.
+- Added Vitest tests that lock down contract version, verdict thresholds, risk→verdict mapping, and the additive-only reason code list.
+- Files changed:
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/index.ts`
+  - `packages/cli/test/contracts.test.ts`
+  - `docs/schemas.md`
+- **Learnings:** codify reason codes as exported string arrays + tests to ensure downstream fixtures remain stable.
+---
+
+## 2026-02-10 20:21 - US-010: Implement `skillvault receipt` (offline-verifiable receipt JSON)
+- Implemented `skillvault receipt <bundle_dir|bundle.zip> [--policy policy.yaml] [--out receipt.json] [--deterministic]`.
+- Added minimal deterministic scan pipeline (bundle read + per-file sha256 + bundle_sha256 + SKILL.md manifest count check) as the single source of truth for receipt generation.
+- Receipt now includes `scanner` (name + version), bundle hash + file hashes, scan summary, and policy decision.
+- Updated schema docs to reflect the new `scanner` field.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/{bundle,hash,policy,scan,receipt,time}.ts`
+  - `packages/cli/test/fixtures/**`
+  - `packages/cli/test/receipt.test.ts`
+  - `docs/schemas.md`
+- **Learnings:** prefer a dedicated `readBundle()` abstraction early so later commands (scan/verify/diff/export) share deterministic traversal and hashing.
+---
+
+## 2026-02-10 20:31 - US-001: Add policy.v1 contract + shared CLI options (no behavior change)
+- Added `policy.v1` TypeScript contract types (gates, capability rules, constraints, profiles).
+- Added `PolicyLoadError` + `parsePolicyV1()`/`loadPolicyV1()` loader stub with ReasonCode mapping for parse/schema failures.
+- Made CLI accept shared flags globally across commands: `--policy`, `--format`, `--out`, `--deterministic`.
+- Fixed testability bug where `process.exitCode` leaked between multiple `main()` calls.
+- Files changed:
+  - `packages/cli/src/policy-v1.ts`
+  - `packages/cli/src/lib/policy-loader.ts`
+  - `packages/cli/src/lib/policy.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/index.ts`
+  - `packages/cli/test/{policy-v1,cli-options}.test.ts`
+  - `packages/cli/test/contracts.test.ts`
+- **Learnings:** for strict yargs CLIs, define shared options at the parser level so every command accepts them without per-command duplication.
+---
+
+## 2026-02-10 20:42 - US-011: Implement `skillvault verify` (hard-fail on hash mismatch and policy/constraints violations)
+- Added `skillvault verify <bundle> --receipt receipt.json [--policy policy.yaml] [--offline] [--format json|table] [--deterministic]`.
+- Verify recomputes per-file sha256 + bundle_sha256 and hard-fails on missing/extra files, file hash mismatch, and bundle hash mismatch with stable reason codes.
+- Enforced policy.v1 constraints/capability rules deterministically (including v0.1 placeholder approvals via REQUIRED_APPROVAL_MISSING).
+- Added tests covering pass case, tamper detection, required-approval failures, and table output; ensured tests clean up temp dirs.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/verify.ts`
+  - `packages/cli/test/{contracts,receipt,verify}.test.ts`
+  - `packages/cli/test/fixtures/policy-require-approval.yaml`
+  - `.gitignore`
+- **Learnings:** clean up `mkdtemp()` artifacts in Vitest tests (and/or ignore `test-tmp-*`) to keep `git status` clean.
+---
+
+## 2026-02-11 20:52 - US-012: Implement `skillvault gate` (receipt-only or bundle input)
+- Implemented `skillvault gate (--receipt receipt.json | <bundle>) --policy policy.yaml [--format json|table] [--deterministic]`.
+- Added deterministic gating engine that can:
+  - gate a bundle by scanning then applying `policy.v1` gates/constraints/capability rules
+  - gate a receipt by applying the same rules to stored receipt scan + file metadata (without reading bundle contents)
+- Gate output is a stable `GateReport` with exit code 0 on PASS/WARN and 1 on any error-level findings.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/lib/gate.ts`
+  - `packages/cli/test/gate.test.ts`
+- **Learnings:** for receipt-only gating, enforce only constraints derivable from receipt metadata (file sizes/paths/capabilities); avoid content-dependent checks unless the receipt stores the required bytes.
+---
+
+## 2026-02-10 20:56 - US-013: Implement `skillvault diff` for bundle/receipt pairs with deterministic security-relevant deltas
+- Implemented `skillvault diff --a <bundle|receipt> --b <bundle|receipt> [--format json|table] [--deterministic]`.
+- Added diff engine that accepts bundle or receipt JSON inputs; bundles are converted to receipts in-memory for canonical comparisons.
+- Diff report includes deterministic:
+  - `file_diffs` (added/removed/modified/unchanged by per-file sha256)
+  - `capability_deltas` (added/removed)
+  - `finding_deltas` (added/removed by `rule_id` when available)
+- Updated schema docs for `DiffReport`.
+- Files changed:
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/lib/diff.ts`
+  - `packages/cli/test/diff.test.ts`
+  - `docs/schemas.md`
+- **Learnings:** for CLI commands that accept multiple input types, validate by minimal structural checks (receipt-like JSON) before falling back to bundle scanning.
+---
+
+## 2026-02-11 21:10 - US-014: Implement `skillvault export` to strict_v0 zip and validate constraints
+- Implemented `skillvault export <bundle_dir> --out bundle.zip --profile strict_v0`.
+- Export enforces strict_v0 hygiene: no symlinks, safe/relative paths only, exactly-one-manifest (SKILL.md/skill.md), deterministic entry ordering, and policy/profile size+token constraints.
+- After writing the zip, re-opens it and re-validates paths + constraints before exiting 0.
+- Added new reason codes for strict bundle hygiene.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/export.ts`
+  - `packages/cli/test/contracts.test.ts`
+  - `packages/cli/test/export.test.ts`
+- **Learnings:** On default macOS case-insensitive filesystems, you can't create both `SKILL.md` and `skill.md` in the same directory; tests for manifest-count violations should cover the missing-manifest case instead of relying on case-only filename differences.
+---
+
+## 2026-02-10 21:16 - US-015: Add fixtures, goldens, and deterministic golden-test harness for scan/receipt/verify/diff
+- Added a second fixture bundle (`malicious-skill`) and committed deterministic JSON goldens for scan/receipt/verify/diff.
+- Implemented a Vitest golden-test harness that runs the CLI with `--deterministic` and compares JSON outputs byte-for-byte against committed goldens.
+- Added a tamper regression test asserting verify fails with stable reason codes when any file is modified.
+- Wired up `skillvault scan` CLI (it previously existed in `lib/scan.ts` but the command was stubbed).
+- Added a GitHub Actions CI workflow that runs build/typecheck/test (goldens included).
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/test/fixtures/malicious-skill/**`
+  - `packages/cli/test/goldens/**`
+  - `packages/cli/test/helpers/goldens.ts`
+  - `packages/cli/test/goldens.test.ts`
+  - `packages/cli/test/cli-options.test.ts`
+  - `packages/cli/test/cli-options.test.ts`
+  - `packages/cli/package.json`
+  - `package.json`
+  - `.github/workflows/ci.yml`
+- **Learnings:** Keep deterministic goldens as literal CLI output strings (pretty JSON + trailing newline) so diffs are immediately actionable.
+---
+
+## 2026-02-11 21:24 - US-016: Add CI workflow to enforce typecheck, tests, and golden determinism
+- Ensured golden tests are non-destructive by default, and only regenerate committed goldens when `REGEN_GOLDENS=1`.
+- Added explicit Vitest coverage for the golden harness behavior (no-regenerate default + regen flag).
+- Files changed:
+  - `packages/cli/test/helpers/goldens.ts`
+  - `packages/cli/test/golden-harness.test.ts`
+- **Learnings:** Gate golden regeneration behind an explicit env var so CI can enforce byte-for-byte determinism.
+---
+
+## 2026-02-10 21:32 - US-017: Write command reference, policy reference, and scoring rubric docs
+- Updated `README.md` with a v0.1 quickstart and all must-ship commands (with key flags).
+- Added `docs/cli.md` with per-command synopsis, conventions, and examples for JSON/table output.
+- Added `docs/policy.md` documenting the policy.v1 YAML schema, a minimal policy example, and profile usage.
+- Updated `docs/scoring.md` and `docs/PRD.md` to match v0.1 `risk_score` components and PASS/WARN/FAIL thresholds.
+- Files changed:
+  - `README.md`
+  - `docs/{cli,policy,scoring,PRD}.md`
+  - `packages/cli/test/docs-smoke.test.ts`
+- **Learnings:** For doc smoke tests, keep assertions string-based (command names + required files) rather than snapshots so future doc edits don’t cause noisy golden churn.
+---

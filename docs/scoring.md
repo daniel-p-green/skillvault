@@ -1,67 +1,73 @@
-# Scoring (Critic/Security score) — open, reproducible
+# Risk scoring (v0.1)
 
-Goal: produce a **critic/security score** that is hard to game because it is computed from:
-- artifact bytes (content hash)
-- scanner version
-- open rubric
+SkillVault v0.1 produces a deterministic **risk score** for SKILL.md bundles.
 
-## Outputs
+- Output field: `risk_score` (components + total)
+- Range: **0–100** (higher = riskier)
+- Verdict thresholds (required):
+  - **PASS**: 0–29
+  - **WARN**: 30–59
+  - **FAIL**: 60–100
 
-- `critic_score` (0–100)
-- `verdict`: PASS | WARN | FAIL
-- `findings[]`: evidence, severity, offsets
+See: `docs/schemas.md` for the canonical JSON shape.
 
 ## Principles
 
-1) **Reproducible**: same inputs → same outputs.
-2) **Evidence-first**: every point change must map to a concrete finding.
-3) **Diff-aware**: updates are scored by *what changed*, not just current state.
+1) **Reproducible**: same bytes + same scanner version + same policy → same outputs.
+2) **Rule-based**: v0.1 scoring is deterministic and does **not** use LLM semantic scanning.
+3) **Auditable**: score is stored as components so users can understand what moved the total.
 
-## Components
+## `risk_score` components
 
-### A) Static deterministic checks
-Examples (non-exhaustive):
-- Obfuscation
-  - zero-width characters
-  - Unicode confusables/homoglyphs
-- Encoded payloads
-  - large base64 blobs above threshold
-  - compressed/minified script blobs (heuristic)
-- Dangerous primitives
-  - `curl | bash`, `wget | sh`
-  - `chmod +x` on new scripts
-  - `sudo`, privileged install steps
-- Instruction override phrases
-  - “ignore previous instructions”, “system prompt”, “do not mention”
-- Outbound URLs/domains list
+The score is stored as:
 
-### B) Policy delta
-Compute capability delta between:
-- `capabilities.declared` (from manifest/frontmatter/policy)
-- `capabilities.inferred` (from static analysis)
+```json
+{
+  "base_risk": 20,
+  "change_risk": 5,
+  "policy_delta": 0,
+  "total": 25
+}
+```
 
-Penalize unexpected escalation (e.g., declared `network: deny` but inferred network usage).
+### `base_risk`
+Risk inferred from the current bundle’s content and inferred capabilities.
 
-### C) Change-risk scoring (diff-aware)
-When comparing two versions/hashes, flag and penalize:
-- new outbound domains
-- new scripts/resources
-- new obfuscation
-- sharp size increases
-- new capability escalations
+Typical drivers (non-exhaustive):
+- inferred capabilities like `network`, `exec`, `writes`
+- presence of suspicious patterns (rule hits)
+- constraint warnings (e.g., manifest token warnings) may contribute depending on policy
 
-## Suggested verdict thresholds
-- PASS: 80–100
-- WARN: 50–79
-- FAIL: 0–49
+### `change_risk`
+Risk attributable to **what changed** relative to a prior version.
 
-(Thresholds are tunable; keep them in one place and version them.)
+- In v0.1, this component is intended to capture diff-aware “update risk”.
+- When no baseline is available, `change_risk` should be 0.
 
-## Open test suite
+### `policy_delta`
+Policy-derived adjustment that penalizes mismatches between:
+- what the policy *expects/allows*, and
+- what the bundle *actually does* (inferred capabilities + constraint posture)
 
-Store fixtures and golden outputs in-repo:
-- `fixtures/` malicious samples
-- `fixtures/` benign samples
-- `goldens/` expected reports and scores
+This keeps policy effects explicit rather than hidden inside `base_risk`.
 
-CI should run the scanner and compare JSON outputs to goldens.
+## Verdict mapping
+
+Verdict is derived **only** from `risk_score.total` using fixed thresholds:
+
+- PASS: `total <= 29`
+- WARN: `30 <= total <= 59`
+- FAIL: `total >= 60`
+
+Policy gates may still fail an artifact even if the score maps to PASS/WARN (e.g., `allow_verdicts: [PASS]`).
+
+## Relationship to policy gating
+
+- `risk_score` comes from scanning/scoring.
+- **Policy gating** decides whether the artifact is allowed in your environment.
+
+Common patterns:
+- “Allow PASS+WARN but cap risk”: `allow_verdicts: [PASS, WARN]` + `max_risk_score: 59`
+- “Only allow PASS”: `allow_verdicts: [PASS]` + `max_risk_score: 29`
+
+See: `docs/policy.md`.
