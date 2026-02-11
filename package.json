@@ -15,5 +15,8 @@
     "typecheck": "npm --workspaces run typecheck",
     "test": "npm --workspaces run test",
     "clean": "npm --workspaces run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7"
   }
 }

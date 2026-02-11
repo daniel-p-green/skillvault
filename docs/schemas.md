@@ -121,6 +121,7 @@ Produced by: `skillvault receipt ... --format json`
 Receipt binds a policy decision to a specific bundle hash + file list.
 
 Required fields:
+- `scanner` (name + version)
 - `bundle_sha256`, `files[]`, `manifest`
 - `scan` (capabilities, risk_score, findings, summary)
 - `policy` (`PolicyDecision`)

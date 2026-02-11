@@ -163,6 +163,10 @@ export interface ScanReport {
 export interface Receipt {
   contract_version: ContractVersion;
   created_at: string;
+  scanner: {
+    name: 'skillvault';
+    version: string;
+  };
   /**
    * Receipt binds to a specific bundle hash + file list.
    * Offline verification recomputes these values and compares.
