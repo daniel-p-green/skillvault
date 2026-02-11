@@ -236,6 +236,22 @@ export interface DiffReport {
   a: { bundle_sha256?: string };
   b: { bundle_sha256?: string };
   file_diffs: FileDiff[];
+  /**
+   * Security-relevant capability deltas (deduped + sorted).
+   * v0.1 values are rule-based and deterministic.
+   */
+  capability_deltas: {
+    added: Capability[];
+    removed: Capability[];
+  };
+  /**
+   * Finding deltas by rule_id (preferred) or a stable fallback key.
+   * This is used for change-risk scoring.
+   */
+  finding_deltas: {
+    added: string[];
+    removed: string[];
+  };
   summary: {
     added: number;
     removed: number;

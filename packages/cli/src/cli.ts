@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import { generateReceipt } from './lib/receipt.js';
 import { verifyBundle } from './lib/verify.js';
 import { gateFromBundle, gateFromReceipt } from './lib/gate.js';
+import { diffInputs } from './lib/diff.js';
 
 export async function main(argv = process.argv): Promise<number> {
   // `process.exitCode` persists across multiple `main()` calls in the same process (tests).
@@ -211,6 +212,52 @@ export async function main(argv = process.argv): Promise<number> {
         }
 
         process.exitCode = exitCode;
+      }
+    )
+    .command(
+      'diff',
+      'Compare two bundles and/or receipts and emit deterministic security-relevant deltas',
+      (cmd) =>
+        cmd
+          .option('a', {
+            type: 'string',
+            demandOption: true,
+            describe: 'Path to bundle directory / bundle.zip OR a receipt.json'
+          })
+          .option('b', {
+            type: 'string',
+            demandOption: true,
+            describe: 'Path to bundle directory / bundle.zip OR a receipt.json'
+          }),
+      async (args) => {
+        const report = await diffInputs(String(args.a), String(args.b), {
+          policyPath: args.policy ? String(args.policy) : undefined,
+          deterministic: Boolean(args.deterministic)
+        });
+
+        if (args.format === 'table') {
+          const lines: string[] = [];
+          lines.push(`a_bundle_sha256: ${report.a.bundle_sha256 ?? ''}`);
+          lines.push(`b_bundle_sha256: ${report.b.bundle_sha256 ?? ''}`);
+          lines.push(`files: +${report.summary.added} -${report.summary.removed} ~${report.summary.modified} =${report.summary.unchanged}`);
+          lines.push(`capabilities_added: ${report.capability_deltas.added.join(', ') || '-'}`);
+          lines.push(`capabilities_removed: ${report.capability_deltas.removed.join(', ') || '-'}`);
+          lines.push(`findings_added: ${report.finding_deltas.added.join(', ') || '-'}`);
+          lines.push(`findings_removed: ${report.finding_deltas.removed.join(', ') || '-'}`);
+          const out = lines.join('\n') + '\n';
+          if (args.out) {
+            await fs.writeFile(String(args.out), out, 'utf8');
+          } else {
+            process.stdout.write(out);
+          }
+        } else {
+          const json = JSON.stringify(report, null, 2) + '\n';
+          if (args.out) {
+            await fs.writeFile(String(args.out), json, 'utf8');
+          } else {
+            process.stdout.write(json);
+          }
+        }
       }
     )
     .demandCommand(1, 'Provide a command');

@@ -158,6 +158,8 @@ Produced by: `skillvault diff ... --format json`
 Required fields:
 - `a.bundle_sha256?`, `b.bundle_sha256?`
 - `file_diffs[]` (each entry includes `path`, change type, and optional `a`/`b` hash+size)
+- `capability_deltas` (`added[]`, `removed[]`)
+- `finding_deltas` (`added[]`, `removed[]`; by `rule_id` when available)
 - `summary` counts for added/removed/modified/unchanged
 
 ---
