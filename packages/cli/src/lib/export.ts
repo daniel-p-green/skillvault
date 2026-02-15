@@ -7,6 +7,7 @@ import { CONTRACT_VERSION } from '../contracts.js';
 import { nowIso, DETERMINISTIC_CREATED_AT_ISO } from './time.js';
 import { readBundle } from './bundle.js';
 import { bundleSha256FromEntries, sha256Hex } from './hash.js';
+import { comparePathBytes } from '../bundle/hashing.js';
 import type { PolicyProfileV1, PolicyV1 } from '../policy-v1.js';
 import { loadPolicyV1 } from './policy-loader.js';
 import { detectManifestFromEntries } from '../manifest/manifest.js';
@@ -171,7 +172,7 @@ export async function exportBundleToZip(bundleDir: string, opts: ExportOptions):
     addFinding(findings, 'CONSTRAINT_SYMLINK_FORBIDDEN', 'error', err instanceof Error ? err.message : String(err));
   }
 
-  relPaths.sort((a, b) => a.localeCompare(b));
+  relPaths.sort(comparePathBytes);
 
   const fileObjs: Array<{ path: string; size: number; bytes: Uint8Array; sha256: string }> = [];
   for (const rel of relPaths) {
@@ -225,7 +226,7 @@ export async function exportBundleToZip(bundleDir: string, opts: ExportOptions):
     bytes: f.bytes,
     sha256: sha256Hex(f.bytes)
   }));
-  reopenedFiles.sort((a, b) => a.path.localeCompare(b.path));
+  reopenedFiles.sort((a, b) => comparePathBytes(a.path, b.path));
 
   for (const f of reopenedFiles) {
     enforcePathSafety(findings, f.path);

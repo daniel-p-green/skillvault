@@ -60,6 +60,28 @@ describe('skillvault export', () => {
     expect(report.findings.some((f) => f.code === 'CONSTRAINT_SYMLINK_FORBIDDEN' && f.severity === 'error')).toBe(true);
   });
 
+  it('uses bytewise UTF-8 ordering for deterministic zip entry order', async () => {
+    const tmp = await mkTmpDir();
+    const bundleDir = path.join(tmp, 'bundle');
+    await fs.mkdir(bundleDir, { recursive: true });
+
+    await fs.writeFile(path.join(bundleDir, 'SKILL.md'), '# ok\n', 'utf8');
+    await fs.writeFile(path.join(bundleDir, 'z.txt'), 'z\n', 'utf8');
+    await fs.writeFile(path.join(bundleDir, 'ä.txt'), 'a-umlaut\n', 'utf8');
+
+    const outZip = path.join(tmp, 'bundle.zip');
+
+    const report = await exportBundleToZip(bundleDir, {
+      outPath: outZip,
+      profile: 'strict_v0',
+      deterministic: true
+    });
+
+    expect(report.validated).toBe(true);
+    // bytewise UTF-8: 'z.txt' (0x7a) sorts before 'ä.txt' (0xc3 0xa4)
+    expect(report.files.map((f) => f.path)).toEqual(['SKILL.md', 'z.txt', 'ä.txt']);
+  });
+
   it('fails export if exactly-one-manifest constraint is violated (no manifest)', async () => {
     const tmp = await mkTmpDir();
     const bundleDir = path.join(tmp, 'bundle');

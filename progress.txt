@@ -330,3 +330,12 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/diff.test.ts`
 - **Learnings:** Reusing a single bytewise comparator across hashing and diffing prevents subtle cross-locale drift in golden JSON ordering.
 ---
+## 2026-02-15 16:33 - US-013: Export: `skillvault export` creates bundle.zip under strict_v0 constraints
+- Updated export path ordering to use bytewise UTF-8 comparator (`comparePathBytes`) for deterministic zip entry ordering and post-write validation ordering.
+- Added regression test that asserts bytewise sort behavior for non-ASCII filenames (`z.txt` before `ä.txt`) to prevent locale-sensitive ordering drift.
+- Re-ran typecheck, build, and full test suite.
+- Files changed:
+  - `packages/cli/src/lib/export.ts`
+  - `packages/cli/test/export.test.ts`
+- **Learnings:** Reuse the same bytewise comparator across hash/diff/export flows so deterministic outputs remain stable across host locales.
+---
