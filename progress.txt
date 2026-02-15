@@ -9,7 +9,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - When testing a yargs CLI by calling `main()` multiple times in one process, reset `process.exitCode` at the start of `main()` to avoid exit-code leakage between tests.
 
 - Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
-- Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
+- Bundle hashing: compute `bundle_sha256` from sorted `path + '\n' + file_sha256 + '\n'`, with bytewise UTF-8 path sorting for deterministic cross-input hashes (dir vs zip).
 - Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
 - Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
 - Contract evolution pattern: export per-command contract IDs (`skillvault.<command>.v1`) from `contracts.ts` and assert their literal values in tests.
@@ -183,4 +183,21 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/src/lib/time.ts`
   - `packages/cli/test/determinism.test.ts`
 - **Learnings:** keep deterministic primitives (`created_at`, canonical JSON bytes) in dedicated utility modules so signing, goldens, and report generation reuse one implementation.
+---
+## 2026-02-15 14:53 - US-003: Bundle hashing: per-file sha256 + bundle_sha256 from sorted paths+hashes
+- Added a dedicated hashing module at `src/bundle/hashing.ts` that:
+  - hashes each bundle file over raw bytes into deterministic `FileEntry[]` (`path`, `size`, `sha256`)
+  - sorts by bytewise UTF-8 path order
+  - computes `bundle_sha256` from canonical `path + '\n' + file_sha256 + '\n'` concatenation.
+- Updated scan flow to use the new hashing module directly.
+- Kept `lib/hash.ts` as a compatibility wrapper for existing call sites while aligning bundle hash semantics.
+- Added tests validating per-file hashing and equivalence between directory and zip inputs.
+- Regenerated deterministic goldens to reflect updated bundle hash canonicalization.
+- Files changed:
+  - `packages/cli/src/bundle/hashing.ts`
+  - `packages/cli/src/lib/hash.ts`
+  - `packages/cli/src/lib/scan.ts`
+  - `packages/cli/test/bundle-hashing.test.ts`
+  - `packages/cli/test/goldens/**`
+- **Learnings:** when hash contracts change, golden fixtures catch downstream drift immediately; keep canonicalization logic centralized and reused by scan/receipt/verify/diff paths.
 ---

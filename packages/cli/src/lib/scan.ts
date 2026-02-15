@@ -1,7 +1,7 @@
 import type { Capability, FileEntry, Finding, ManifestRef, RiskScore, ScanReport } from '../contracts.js';
 import { CONTRACT_VERSION } from '../contracts.js';
 import { readBundle } from './bundle.js';
-import { bundleSha256FromEntries, sha256Hex } from './hash.js';
+import { computeBundleSha256, hashBundleFiles, sha256Hex } from '../bundle/hashing.js';
 import { nowIso } from './time.js';
 
 function isManifestPath(p: string): boolean {
@@ -15,15 +15,9 @@ export interface ScanOptions {
 export async function scanBundle(pathOrZip: string, opts: ScanOptions): Promise<ScanReport> {
   const bundle = await readBundle(pathOrZip);
 
-  const files: FileEntry[] = bundle.files.map((f) => ({
-    path: f.path,
-    size: f.bytes.byteLength,
-    sha256: sha256Hex(f.bytes)
-  }));
+  const files: FileEntry[] = hashBundleFiles(bundle.files);
 
-  files.sort((a, b) => a.path.localeCompare(b.path));
-
-  const bundle_sha256 = bundleSha256FromEntries(files.map((f) => ({ path: f.path, sha256: f.sha256 })));
+  const bundle_sha256 = computeBundleSha256(files);
 
   const manifestCandidates = files.filter((f) => isManifestPath(f.path));
   const findings: Finding[] = [];
