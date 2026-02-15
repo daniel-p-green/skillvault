@@ -167,12 +167,8 @@ function gateFromInputs(opts: {
   enforceConstraintsFromEntries(findings, opts.profile, opts.entries);
   enforceCapabilities(findings, opts.profile, opts.capabilities);
 
-  // If the policy decision itself includes any errors, count as policy violation.
-  for (const f of policy.findings) {
-    if (f.severity === 'error') {
-      addFinding(findings, 'POLICY_VIOLATION', 'error', f.message, { details: { wrapped_policy_code: f.code } });
-    }
-  }
+  // Surface policy gate findings directly with stable reason codes.
+  findings.push(...policy.findings);
 
   const hasError = findings.some((f) => f.severity === 'error');
 

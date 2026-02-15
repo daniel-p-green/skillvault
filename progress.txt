@@ -18,6 +18,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Policy parsing pattern: keep one strict parser (`src/policy/policy.ts`) that merges validated YAML overlays onto a stable `DEFAULT_POLICY_V1`, so omitted `--policy` behavior is deterministic across commands.
 - Capability inference pattern: keep a fixed rule-map module (`src/scan/capabilities.ts`) with path/content regexes over normalized text, then dedupe + lexicographically sort capabilities for stable receipts/gates.
 - Risk scoring pattern: compute `risk_score` through a single pure helper (`src/scan/scoring.ts`) that clamps components and total deterministically, then reuse scan output in receipt/verify/gate.
+- Gate reporting pattern: when policy gates fail, surface the original policy reason codes (`POLICY_MAX_RISK_EXCEEDED`, `POLICY_VERDICT_NOT_ALLOWED`) directly in gate findings instead of wrapping them, so CI can assert stable codes.
 - CLI output tests should prefer `--out <file>` + file assertions to avoid brittle stdout interception and keep JSON/table checks deterministic.
 - Receipt signing pattern: compute `payload_sha256` over canonical JSON bytes of the unsigned receipt (sorted keys, no whitespace), then Ed25519-sign those exact bytes and store signature as base64.
 - Signature verification pattern: canonicalize the same unsigned receipt payload bytes (receipt with `signature` removed), compare computed payload hash to `signature.payload_sha256`, then Ed25519-verify using either `--pubkey` or keyring lookup by `key_id`.
@@ -146,7 +147,6 @@ Started: 2026-02-10 19:07 America/Chicago
   - `.github/workflows/ci.yml`
 - **Learnings:** Keep deterministic goldens as literal CLI output strings (pretty JSON + trailing newline) so diffs are immediately actionable.
 ---
-
 ## 2026-02-11 21:24 - US-016: Add CI workflow to enforce typecheck, tests, and golden determinism
 - Ensured golden tests are non-destructive by default, and only regenerate committed goldens when `REGEN_GOLDENS=1`.
 - Added explicit Vitest coverage for the golden harness behavior (no-regenerate default + regen flag).
@@ -305,4 +305,18 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/verify.test.ts`
   - `packages/cli/test/goldens.test.ts`
 - **Learnings:** verify should re-create the exact canonical unsigned receipt bytes used at signing time (remove `signature`, sort keys) before both hash comparison and signature verification.
+---
+
+## 2026-02-15 16:13 - US-011: Policy gating: `skillvault gate` evaluates a bundle or receipt
+- Updated gate engine to surface policy gate failures directly from policy decision findings, preserving stable reason codes instead of wrapping them.
+- Added policy fixtures to exercise explicit gate failures:
+  - `policy-max-risk-zero.yaml` for `POLICY_MAX_RISK_EXCEEDED`
+  - `policy-allow-warn-only.yaml` for `POLICY_VERDICT_NOT_ALLOWED`
+- Extended gate command tests to assert both stable reason codes and failure exit behavior.
+- Files changed:
+  - `packages/cli/src/lib/gate.ts`
+  - `packages/cli/test/gate.test.ts`
+  - `packages/cli/test/fixtures/policy-max-risk-zero.yaml`
+  - `packages/cli/test/fixtures/policy-allow-warn-only.yaml`
+- **Learnings:** Preserve first-class policy finding codes in gate outputs so CI can key off canonical reason codes without translation layers.
 ---

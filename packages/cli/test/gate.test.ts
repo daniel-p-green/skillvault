@@ -91,6 +91,68 @@ describe('skillvault gate', () => {
     }
   });
 
+  it('enforces POLICY_MAX_RISK_EXCEEDED with stable reason code', async () => {
+    const bundleDir = path.join(FIXTURES, 'malicious-skill');
+    const policyPath = path.join(FIXTURES, 'policy-max-risk-zero.yaml');
+
+    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
+
+    try {
+      const outPath = path.join(tmpDir, 'gate.json');
+
+      const code = await main([
+        'node',
+        'skillvault',
+        'gate',
+        bundleDir,
+        '--policy',
+        policyPath,
+        '--deterministic',
+        '--out',
+        outPath
+      ]);
+
+      expect(code).toBe(1);
+
+      const report = await readJson(outPath);
+      expect(report.verdict).toBe('FAIL');
+      expect(report.findings.map((f: any) => f.code)).toContain('POLICY_MAX_RISK_EXCEEDED');
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('enforces POLICY_VERDICT_NOT_ALLOWED with stable reason code', async () => {
+    const bundleDir = path.join(FIXTURES, 'benign-skill');
+    const policyPath = path.join(FIXTURES, 'policy-allow-warn-only.yaml');
+
+    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
+
+    try {
+      const outPath = path.join(tmpDir, 'gate.json');
+
+      const code = await main([
+        'node',
+        'skillvault',
+        'gate',
+        bundleDir,
+        '--policy',
+        policyPath,
+        '--deterministic',
+        '--out',
+        outPath
+      ]);
+
+      expect(code).toBe(1);
+
+      const report = await readJson(outPath);
+      expect(report.verdict).toBe('FAIL');
+      expect(report.findings.map((f: any) => f.code)).toContain('POLICY_VERDICT_NOT_ALLOWED');
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it('fails when policy requires approval but none are present (v0.1 placeholder) via receipt gating', async () => {
     const bundleDir = path.join(FIXTURES, 'benign-skill');
     const policyPath = path.join(FIXTURES, 'policy-require-approval.yaml');
