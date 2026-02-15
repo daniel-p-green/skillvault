@@ -60,7 +60,7 @@ describe('skillvault diff', () => {
     }
   });
 
-  it('accepts receipt inputs (in-memory bundle receipts + receipt files)', async () => {
+  it('accepts receipt-vs-receipt inputs', async () => {
     const bundleDir = path.join(FIXTURES, 'benign-skill');
     const policyPath = path.join(FIXTURES, 'policy-pass.yaml');
 
@@ -110,6 +110,55 @@ describe('skillvault diff', () => {
       expect(diff.summary.modified).toBe(0);
       expect(diff.summary.added).toBe(0);
       expect(diff.summary.removed).toBe(0);
+      expect(diff.summary.unchanged).toBeGreaterThanOrEqual(2);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts bundle-vs-receipt inputs', async () => {
+    const bundleDir = path.join(FIXTURES, 'benign-skill');
+    const policyPath = path.join(FIXTURES, 'policy-pass.yaml');
+    const signingKey = path.join(FIXTURES, 'keys', 'ed25519-private.pem');
+    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
+
+    try {
+      const receiptPath = path.join(tmpDir, 'receipt.json');
+      const outPath = path.join(tmpDir, 'diff.json');
+
+      await main([
+        'node',
+        'skillvault',
+        'receipt',
+        bundleDir,
+        '--policy',
+        policyPath,
+        '--signing-key',
+        signingKey,
+        '--deterministic',
+        '--out',
+        receiptPath
+      ]);
+
+      const code = await main([
+        'node',
+        'skillvault',
+        'diff',
+        '--a',
+        bundleDir,
+        '--b',
+        receiptPath,
+        '--policy',
+        policyPath,
+        '--deterministic',
+        '--out',
+        outPath
+      ]);
+      expect(code).toBe(0);
+
+      const diff = JSON.parse(await fs.readFile(outPath, 'utf8')) as any;
+      expect(diff.created_at).toBe(DETERMINISTIC_CREATED_AT_ISO);
+      expect(diff.summary).toEqual({ added: 0, removed: 0, modified: 0, unchanged: diff.summary.unchanged });
       expect(diff.summary.unchanged).toBeGreaterThanOrEqual(2);
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

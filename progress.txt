@@ -7,6 +7,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Keep JSON contract fields explicitly versioned (`contract_version`) and export stable constants (e.g., `CONTRACT_VERSION`, `ReasonCodes`) to prevent silent drift.
 - For contract stability tests in Vitest, prefer explicit list equality (not snapshots) so additive-only changes are intentional.
 - When testing a yargs CLI by calling `main()` multiple times in one process, reset `process.exitCode` at the start of `main()` to avoid exit-code leakage between tests.
+- For deterministic diffs and cross-platform stability, sort file paths and delta string keys with bytewise UTF-8 comparison (`comparePathBytes`) instead of locale-aware collation.
 
 - Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
 - Bundle hashing: compute `bundle_sha256` from sorted `path + '\n' + file_sha256 + '\n'`, with bytewise UTF-8 path sorting for deterministic cross-input hashes (dir vs zip).
@@ -319,4 +320,13 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/fixtures/policy-max-risk-zero.yaml`
   - `packages/cli/test/fixtures/policy-allow-warn-only.yaml`
 - **Learnings:** Preserve first-class policy finding codes in gate outputs so CI can key off canonical reason codes without translation layers.
+---
+## 2026-02-15 16:24 - US-012: Diff: `skillvault diff` compares two bundles/receipts deterministically
+- Updated diff ordering logic to use bytewise UTF-8 sorting (`comparePathBytes`) for file paths and delta keys, removing locale-dependent ordering behavior.
+- Expanded diff tests to explicitly cover all required input combinations: bundle-vs-bundle, receipt-vs-receipt, and bundle-vs-receipt.
+- Verified deterministic output metadata and summary counts for bundle-vs-receipt comparisons.
+- Files changed:
+  - `packages/cli/src/lib/diff.ts`
+  - `packages/cli/test/diff.test.ts`
+- **Learnings:** Reusing a single bytewise comparator across hashing and diffing prevents subtle cross-locale drift in golden JSON ordering.
 ---
