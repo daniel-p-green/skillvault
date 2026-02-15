@@ -93,10 +93,14 @@ Verify that a bundle matches a receipt, and that policy/constraints/approvals (i
 **Synopsis**
 
 ```bash
-skillvault verify <bundle_dir|bundle.zip> --receipt receipt.json [--policy policy.yaml] [--offline] [--format json|table] [--deterministic]
+skillvault verify <bundle_dir|bundle.zip> --receipt receipt.json [--policy policy.yaml] (--pubkey <ed25519_public_key> | --keyring <dir>) [--offline] [--format json|table] [--deterministic]
 ```
 
+**Key source (required)**
+- Provide exactly one: `--pubkey <file>` or `--keyring <dir>`.
+
 **Hard-fail conditions (required in v0.1)**
+- Any **signature validation failure** (invalid signature, payload hash mismatch, unknown key)
 - Any **content hash mismatch** (missing/extra file, per-file sha256 mismatch, bundle sha256 mismatch)
 - Any **constraint violation** under the applied policy
 - Any **required approval missing** (approval system is a placeholder in v0.1, but the policy decision must be deterministic)

@@ -25,6 +25,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Signature verification pattern: canonicalize the same unsigned receipt payload bytes (receipt with `signature` removed), compare computed payload hash to `signature.payload_sha256`, then Ed25519-verify using either `--pubkey` or keyring lookup by `key_id`.
 - On macOS case-insensitive filesystems, keep multi-manifest fixtures as `.zip` inputs (`SKILL.md` + `skill.md`) to test exact-manifest-count constraints deterministically.
 - Golden drift checks should be runnable both in CI and locally via one script (`scripts/test-goldens.sh`) with explicit `--update` mode for controlled regeneration.
+- Documentation regression tests live in `packages/cli/test/docs-smoke.test.ts`; keep assertions keyword-based (commands/flags/critical terms) to catch contract-doc drift without snapshot churn.
 
 ---
 
@@ -355,4 +356,24 @@ Started: 2026-02-10 19:07 America/Chicago
   - oversized bundle verify failure with `CONSTRAINT_FILE_SIZE_LIMIT`
   - capability-trigger fixture deterministic capability inference
 - **Learnings:** for multi-manifest fixture realism on macOS, zip fixtures are safer than directory fixtures because case-only filenames cannot coexist on default filesystems.
+---
+## 2026-02-15 16:54 - US-015: Documentation: CLI reference, schema docs, scoring rubric, signing notes
+- Updated `README.md` command examples/reference links for the full scan -> receipt -> verify -> gate -> diff -> export workflow, including verify key requirements.
+- Updated docs to match implemented v0.1 trust layer behavior:
+  - `docs/cli.md`: verify synopsis now requires `--pubkey` or `--keyring`, plus explicit signature hard-fail notes.
+  - `docs/schemas.md`: refreshed to reflect signed receipts (Ed25519), contract IDs, and current report fields.
+  - `docs/policy.md`: corrected policy source-of-truth path.
+- Added new documentation pages:
+  - `docs/signing.md`: signature payload model, Ed25519 key usage, keyring flow, and offline verify behavior.
+  - `docs/deterministic.md`: deterministic mode semantics and golden-check workflow (`test:goldens:check` / update path).
+- Extended docs smoke tests to enforce presence of new docs and critical trust-layer terms/flags (`--pubkey`, `--keyring`, signature coverage, deterministic golden workflow).
+- Files changed:
+  - `README.md`
+  - `docs/cli.md`
+  - `docs/policy.md`
+  - `docs/schemas.md`
+  - `docs/signing.md`
+  - `docs/deterministic.md`
+  - `packages/cli/test/docs-smoke.test.ts`
+- **Learnings:** keep doc smoke tests focused on required keywords/flags so they guard trust-contract drift (especially signing + verify UX) while staying resilient to normal prose edits.
 ---

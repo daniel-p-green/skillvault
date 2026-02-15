@@ -3,7 +3,7 @@
 SkillVault policies are YAML files that define **deterministic gates and constraints**.
 
 - File format: YAML
-- Contract: **policy.v1** (TypeScript source of truth: `packages/cli/src/policy-v1.ts`)
+- Contract: **policy.v1** (TypeScript source of truth: `packages/cli/src/policy/policy.ts`)
 - The policy is applied by `receipt`, `verify`, `gate`, and (optionally) `scan`.
 
 ## Minimal example (`policy.yaml`)

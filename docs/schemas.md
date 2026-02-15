@@ -1,52 +1,57 @@
 # SkillVault v0.1 JSON contracts
 
-This document defines the **stable JSON shapes** emitted by the SkillVault v0.1 CLI.
+Stable JSON contracts emitted by the SkillVault CLI.
 
 Scope (v0.1):
-- **SKILL.md bundles only** (exactly one `SKILL.md`/`skill.md` manifest)
-- **Offline-verifiable receipts** (no signatures in v0.1; hashing only)
-- **Deterministic, rule-based scanning** (no LLM scoring path)
+- SKILL.md bundles only (exactly one `SKILL.md`/`skill.md` manifest)
+- receipts are Ed25519 signed and verifiable offline
+- scanning/scoring is deterministic and rule-based (no LLM scoring path)
 
-All contracts include `contract_version: "0.1"`.
+Contract IDs are exported from `packages/cli/src/contracts.ts`:
 
----
+- `skillvault.scan.v1`
+- `skillvault.receipt.v1`
+- `skillvault.verify.v1`
+- `skillvault.gate.v1`
+- `skillvault.diff.v1`
+- `skillvault.export.v1`
 
-## Common fields
+All reports include `contract_version: "0.1"`.
 
-### `Verdict`
+## Common primitives
+
+### Verdict
 `"PASS" | "WARN" | "FAIL"`
 
-### Verdict thresholds (required)
-Derived from total risk score (0–100):
-- **PASS**: 0–29
-- **WARN**: 30–59
-- **FAIL**: 60–100
+Thresholds by `risk_score.total`:
+- PASS: 0-29
+- WARN: 30-59
+- FAIL: 60-100
 
-Represented in JSON as:
-
-```json
-{
-  "thresholds": {
-    "pass_max": 29,
-    "warn_max": 59,
-    "fail_max": 100
-  }
-}
-```
-
-### `FileEntry`
-A bundle is represented as a list of files with raw-byte hashes.
+### FileEntry
 
 ```json
 {
   "path": "src/index.ts",
   "size": 1234,
-  "sha256": "<hex sha256 of raw bytes>"
+  "sha256": "<hex sha256 over raw bytes>"
 }
 ```
 
-### `Finding`
-Machine-readable finding with a stable reason code.
+### RiskScore
+
+```json
+{
+  "base_risk": 20,
+  "change_risk": 5,
+  "policy_delta": 0,
+  "total": 25
+}
+```
+
+`total` is deterministic and clamped to `[0, 100]`.
+
+### Finding
 
 ```json
 {
@@ -58,113 +63,76 @@ Machine-readable finding with a stable reason code.
 }
 ```
 
-### `ReasonCode` (stable strings)
-Additive-only in v0.1.
+## Receipt signature envelope
 
-Hash / integrity:
-- `BUNDLE_HASH_MISMATCH`
-- `FILE_HASH_MISMATCH`
-- `RECEIPT_BUNDLE_HASH_MISMATCH`
-- `RECEIPT_PARSE_ERROR`
-
-Policy / gating:
-- `POLICY_MAX_RISK_EXCEEDED`
-- `POLICY_VERDICT_NOT_ALLOWED`
-- `POLICY_CAPABILITY_BLOCKED`
-- `POLICY_APPROVAL_REQUIRED`
-
-Constraints:
-- `CONSTRAINT_MANIFEST_COUNT`
-- `CONSTRAINT_BUNDLE_SIZE_LIMIT`
-- `CONSTRAINT_FILE_SIZE_LIMIT`
-- `CONSTRAINT_TOKEN_LIMIT_WARN`
-- `CONSTRAINT_TOKEN_LIMIT_FAIL`
-
----
-
-## `RiskScore`
-
-Risk scoring is stored as components for auditability.
+`Receipt.signature` is required in v0.1:
 
 ```json
 {
-  "base_risk": 20,
-  "change_risk": 5,
-  "policy_delta": 0,
-  "total": 25
+  "alg": "ed25519",
+  "key_id": "optional",
+  "payload_sha256": "<hex sha256 of canonical unsigned receipt payload>",
+  "sig": "<base64 ed25519 signature>"
 }
 ```
 
-- `total` must be deterministic and in `[0, 100]`.
-- v0.1 uses rule-based capability inference and rule-based risk heuristics.
+The signature covers canonical JSON bytes of the receipt with `signature` removed.
 
----
+## Command contracts
 
-## Reports
-
-### `ScanReport`
-Produced by: `skillvault scan ... --format json`
-
-Required fields:
-- `created_at` (ISO timestamp; frozen in deterministic mode)
+### ScanReport (`skillvault scan`)
+Required core fields:
+- `created_at`
 - `bundle_sha256`
-- `files[]` (sorted deterministically by path)
-- `manifest` (exactly one in v0.1)
-- `capabilities[]` (deduped + sorted)
+- `files[]` (deterministic order)
+- `manifest`
+- `inferred_capabilities[]`
 - `risk_score`
 - `summary`
-- `findings[]` (scanner findings, pre-policy)
+- `findings[]`
 
-### `Receipt`
-Produced by: `skillvault receipt ... --format json`
-
-Receipt binds a policy decision to a specific bundle hash + file list.
-
-Required fields:
-- `scanner` (name + version)
+### Receipt (`skillvault receipt`)
+Required core fields:
+- `scanner` (name/version)
 - `bundle_sha256`, `files[]`, `manifest`
-- `scan` (capabilities, risk_score, findings, summary)
-- `policy` (`PolicyDecision`)
+- `scan` (capabilities, risk score, findings, summary)
+- `policy` decision + reasons
+- `signature`
 
-### `VerifyReport`
-Produced by: `skillvault verify ... --format json`
-
-Verification MUST hard-fail (`verified: false`) on:
-- any content hash mismatch between bundle and receipt
-- any constraint violations
-- missing required approvals (approval system may be empty/placeholder in v0.1, but the decision is deterministic)
-
-Required fields:
+### VerifyReport (`skillvault verify`)
+Required core fields:
 - `receipt.bundle_sha256`
 - `bundle_sha256`
 - `verified`
 - `findings[]`
 - `policy`
 
-### `GateReport`
-Produced by: `skillvault gate ... --format json`
+Verify must hard-fail (`verified: false`, non-zero exit) on invalid signature, missing key/keyring resolution failure, or any hash mismatch/tamper.
 
-Applies a policy to either a fresh scan or an existing receipt.
-
-Required fields:
+### GateReport (`skillvault gate`)
+Required core fields:
 - `verdict`
 - `risk_score`
 - `findings[]`
 - `policy`
 
-### `DiffReport`
-Produced by: `skillvault diff ... --format json`
-
-Required fields:
+### DiffReport (`skillvault diff`)
+Required core fields:
 - `a.bundle_sha256?`, `b.bundle_sha256?`
-- `file_diffs[]` (each entry includes `path`, change type, and optional `a`/`b` hash+size)
+- `file_diffs[]`
 - `capability_deltas` (`added[]`, `removed[]`)
-- `finding_deltas` (`added[]`, `removed[]`; by `rule_id` when available)
-- `summary` counts for added/removed/modified/unchanged
+- `finding_deltas` (`added[]`, `removed[]`)
+- `summary`
 
----
+### ExportReport (`skillvault export`)
+Required core fields:
+- `validated`
+- `bundle_sha256`
+- `out_path`
+- `files[]`
+- `findings[]`
 
-## Canonical TypeScript source
+## Source of truth
 
-The canonical TypeScript type definitions live in:
+Canonical types and reason codes live in:
 - `packages/cli/src/contracts.ts`
