@@ -15,6 +15,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Contract evolution pattern: export per-command contract IDs (`skillvault.<command>.v1`) from `contracts.ts` and assert their literal values in tests.
 - Canonical JSON for signing/goldens: recursively sort object keys (leave array order unchanged) and serialize without whitespace to produce byte-stable UTF-8 payloads.
 - Shared trust helpers live in `src/manifest/*` and `src/text/*`; use them across scan/verify/gate/export to keep manifest findings and normalization/token behavior deterministic.
+- Policy parsing pattern: keep one strict parser (`src/policy/policy.ts`) that merges validated YAML overlays onto a stable `DEFAULT_POLICY_V1`, so omitted `--policy` behavior is deterministic across commands.
 
 ---
 
@@ -213,4 +214,16 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/src/lib/{scan,verify,gate,export}.ts`
   - `packages/cli/test/manifest-normalize.test.ts`
 - **Learnings:** centralize manifest-count and normalization rules in shared helpers so scan/verify/gate/export stay consistent and reason-code output remains stable.
+---
+## 2026-02-15 15:14 - US-005: Policy.v1 YAML parsing + validation + defaults
+- Implemented strict policy.v1 YAML parser/loader in `packages/cli/src/policy/policy.ts` with typed validation for gates, capability rules, constraints, and profile overlays.
+- Added deterministic built-in `DEFAULT_POLICY_V1` and made `loadPolicyV1()` return it when `--policy` is omitted.
+- Standardized parse and validation failures to throw `PolicyLoadError` with stable reason `POLICY_PARSE_ERROR` and structured `details`.
+- Replaced legacy loader implementation with a compatibility re-export from the new policy module.
+- Expanded policy tests to cover defaults, no-policy loading behavior, invalid YAML errors, and schema validation errors.
+- Files changed:
+  - `packages/cli/src/policy/policy.ts`
+  - `packages/cli/src/lib/policy-loader.ts`
+  - `packages/cli/test/policy-v1.test.ts`
+- **Learnings:** Merge user policy as a validated overlay over a stable default object to keep CLI behavior deterministic when policy files are absent or partial.
 ---
