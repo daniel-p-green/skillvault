@@ -17,6 +17,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Shared trust helpers live in `src/manifest/*` and `src/text/*`; use them across scan/verify/gate/export to keep manifest findings and normalization/token behavior deterministic.
 - Policy parsing pattern: keep one strict parser (`src/policy/policy.ts`) that merges validated YAML overlays onto a stable `DEFAULT_POLICY_V1`, so omitted `--policy` behavior is deterministic across commands.
 - Capability inference pattern: keep a fixed rule-map module (`src/scan/capabilities.ts`) with path/content regexes over normalized text, then dedupe + lexicographically sort capabilities for stable receipts/gates.
+- Risk scoring pattern: compute `risk_score` through a single pure helper (`src/scan/scoring.ts`) that clamps components and total deterministically, then reuse scan output in receipt/verify/gate.
 
 ---
 
@@ -242,4 +243,20 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/goldens/malicious-skill/receipt.json`
   - `packages/cli/test/goldens/diff/benign-vs-malicious.json`
 - **Learnings:** treat capability inference as pure, rule-based analysis over normalized text with deterministic file ordering to keep scan/receipt/diff fixtures stable.
+---
+## 2026-02-15 15:33 - US-007: Deterministic risk scoring engine (base_risk + change_risk + policy_delta)
+- Added deterministic scoring module `packages/cli/src/scan/scoring.ts`:
+  - capability-weighted `base_risk` from deduped/sorted inferred capabilities
+  - finding-severity additive risk (`info`/`warn`/`error`)
+  - explicit `change_risk` and `policy_delta` inputs
+  - deterministic clamping and integer normalization with `total` constrained to `[0,100]`
+- Updated scan pipeline to compute `risk_score` via `computeRiskScore()` instead of hardcoded zero values.
+- Added scoring unit tests for determinism, clamping behavior, and exact PASS/WARN/FAIL threshold mapping.
+- Regenerated malicious fixture scan/receipt goldens to reflect non-zero deterministic `base_risk`.
+- Files changed:
+  - `packages/cli/src/scan/scoring.ts`
+  - `packages/cli/src/lib/scan.ts`
+  - `packages/cli/test/scoring.test.ts`
+  - `packages/cli/test/goldens/malicious-skill/{scan,receipt}.json`
+- **Learnings:** keep scoring as a pure function over capabilities/findings + explicit deltas so scan/receipt/verify/gate inherit the same deterministic risk semantics.
 ---

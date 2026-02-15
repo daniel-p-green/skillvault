@@ -5,6 +5,7 @@ import { computeBundleSha256, hashBundleFiles, sha256Hex } from '../bundle/hashi
 import { nowIso } from './time.js';
 import { detectManifestFromEntries } from '../manifest/manifest.js';
 import { inferCapabilities } from '../scan/capabilities.js';
+import { computeRiskScore } from '../scan/scoring.js';
 
 export interface ScanOptions {
   deterministic: boolean;
@@ -24,12 +25,12 @@ export async function scanBundle(pathOrZip: string, opts: ScanOptions): Promise<
 
   const capabilities: Capability[] = inferCapabilities(bundle.files);
 
-  const risk_score: RiskScore = {
-    base_risk: 0,
-    change_risk: 0,
-    policy_delta: 0,
-    total: 0
-  };
+  const risk_score: RiskScore = computeRiskScore({
+    capabilities,
+    findings,
+    changeRisk: 0,
+    policyDelta: 0
+  });
 
   const total_bytes = files.reduce((acc, f) => acc + f.size, 0);
 

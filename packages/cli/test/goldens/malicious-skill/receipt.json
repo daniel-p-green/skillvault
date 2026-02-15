@@ -28,10 +28,10 @@
       "exec"
     ],
     "risk_score": {
-      "base_risk": 0,
+      "base_risk": 25,
       "change_risk": 0,
       "policy_delta": 0,
-      "total": 0
+      "total": 25
     },
     "summary": {
       "file_count": 2,
@@ -55,10 +55,10 @@
       ]
     },
     "risk_score": {
-      "base_risk": 0,
+      "base_risk": 25,
       "change_risk": 0,
       "policy_delta": 0,
-      "total": 0
+      "total": 25
     },
     "findings": []
   }
