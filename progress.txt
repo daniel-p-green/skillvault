@@ -20,6 +20,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Risk scoring pattern: compute `risk_score` through a single pure helper (`src/scan/scoring.ts`) that clamps components and total deterministically, then reuse scan output in receipt/verify/gate.
 - CLI output tests should prefer `--out <file>` + file assertions to avoid brittle stdout interception and keep JSON/table checks deterministic.
 - Receipt signing pattern: compute `payload_sha256` over canonical JSON bytes of the unsigned receipt (sorted keys, no whitespace), then Ed25519-sign those exact bytes and store signature as base64.
+- Signature verification pattern: canonicalize the same unsigned receipt payload bytes (receipt with `signature` removed), compare computed payload hash to `signature.payload_sha256`, then Ed25519-verify using either `--pubkey` or keyring lookup by `key_id`.
 
 ---
 
@@ -288,4 +289,20 @@ Started: 2026-02-10 19:07 America/Chicago
   - `docs/cli.md`
   - `README.md`
 - **Learnings:** keep signing payload strictly to canonicalized unsigned receipt bytes; using the same byte source for both `payload_sha256` and `crypto.sign()` avoids subtle verification drift.
+---
+## 2026-02-15 16:06 - US-010: Receipt verification: `skillvault verify` recomputes hashes + verifies signature offline
+- Implemented signed-receipt verification in `verify` flow with strict schema checks and stable failure codes.
+- Added CLI verify key options: exactly one of `--pubkey <file>` or `--keyring <dir>` is now required.
+- Verify now performs deterministic key resolution (`key_id` + filename conventions), canonical unsigned-payload hashing, payload hash comparison, and Ed25519 signature verification.
+- Added/updated tamper coverage:
+  - bundle-file tamper -> hash mismatch codes
+  - receipt payload tamper -> `SIGNATURE_INVALID`
+  - keyring lookup by `key_id` works
+- Updated golden tests to include verify key inputs.
+- Files changed:
+  - `packages/cli/src/lib/verify.ts`
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/test/verify.test.ts`
+  - `packages/cli/test/goldens.test.ts`
+- **Learnings:** verify should re-create the exact canonical unsigned receipt bytes used at signing time (remove `signature`, sort keys) before both hash comparison and signature verification.
 ---

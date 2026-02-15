@@ -128,6 +128,14 @@ export async function main(argv = process.argv): Promise<number> {
             demandOption: true,
             describe: 'Path to receipt.json'
           })
+          .option('pubkey', {
+            type: 'string',
+            describe: 'Path to Ed25519 public key PEM for signature verification'
+          })
+          .option('keyring', {
+            type: 'string',
+            describe: 'Directory of Ed25519 public keys (lookup by key_id/filename convention)'
+          })
           .option('offline', {
             type: 'boolean',
             default: false,
@@ -147,9 +155,20 @@ export async function main(argv = process.argv): Promise<number> {
           }
         }
 
+        const pubkeyPath = args.pubkey ? String(args.pubkey) : undefined;
+        const keyringDir = args.keyring ? String(args.keyring) : undefined;
+
+        if ((pubkeyPath && keyringDir) || (!pubkeyPath && !keyringDir)) {
+          console.error('verify requires exactly one of --pubkey <file> or --keyring <dir>');
+          process.exitCode = 2;
+          return;
+        }
+
         const { report, exitCode } = await verifyBundle(bundlePath, {
           receiptPath,
           policyPath: args.policy ? String(args.policy) : undefined,
+          pubkeyPath,
+          keyringDir,
           offline,
           deterministic: Boolean(args.deterministic)
         });

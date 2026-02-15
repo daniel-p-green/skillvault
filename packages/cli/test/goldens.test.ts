@@ -7,6 +7,7 @@ import { main } from '../src/cli.js';
 
 const policyPass = path.join(FIXTURES_DIR, 'policy-pass.yaml');
 const signingKey = path.join(FIXTURES_DIR, 'keys', 'ed25519-private.pem');
+const publicKey = path.join(FIXTURES_DIR, 'keys', 'ed25519-public.pem');
 
 describe('goldens (deterministic regression tests)', () => {
   it('scan/receipt/verify match goldens for benign fixture', async () => {
@@ -28,7 +29,7 @@ describe('goldens (deterministic regression tests)', () => {
     await expectGolden(receiptOut, path.join(GOLDENS_DIR, 'benign-skill', 'receipt.json'));
 
     const codeVerify = await runCliToFile(
-      ['verify', bundle, '--receipt', path.join(GOLDENS_DIR, 'benign-skill', 'receipt.json'), '--policy', policyPass, '--offline', '--deterministic', '--format', 'json'],
+      ['verify', bundle, '--receipt', path.join(GOLDENS_DIR, 'benign-skill', 'receipt.json'), '--policy', policyPass, '--pubkey', publicKey, '--offline', '--deterministic', '--format', 'json'],
       verifyOut
     );
     expect(codeVerify).toBe(0);
@@ -106,6 +107,8 @@ describe('goldens (deterministic regression tests)', () => {
         receiptPath,
         '--policy',
         policyPass,
+        '--pubkey',
+        publicKey,
         '--offline',
         '--deterministic',
         '--out',
