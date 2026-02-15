@@ -4,7 +4,7 @@ Local-first trust receipts + deterministic policy gating for **SKILL.md bundles*
 
 v0.1 decisions:
 - **SKILL.md bundles only** (exactly one `SKILL.md`/`skill.md` manifest)
-- Receipts are **offline-verifiable by deterministic hashing** (no signatures in v0.1)
+- Receipts are **Ed25519-signed** and offline-verifiable by deterministic hashing
 - Scanning/scoring is **deterministic + rule-based** (no LLM scoring path)
 
 ## Requirements
@@ -39,7 +39,7 @@ node packages/cli/dist/cli.js scan <bundle_dir|bundle.zip> --format table
 Generate a receipt:
 
 ```bash
-node packages/cli/dist/cli.js receipt <bundle_dir|bundle.zip> --out receipt.json
+node packages/cli/dist/cli.js receipt <bundle_dir|bundle.zip> --signing-key ed25519-private.pem --out receipt.json
 ```
 
 Verify a bundle matches a receipt (offline):

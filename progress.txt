@@ -19,6 +19,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Capability inference pattern: keep a fixed rule-map module (`src/scan/capabilities.ts`) with path/content regexes over normalized text, then dedupe + lexicographically sort capabilities for stable receipts/gates.
 - Risk scoring pattern: compute `risk_score` through a single pure helper (`src/scan/scoring.ts`) that clamps components and total deterministically, then reuse scan output in receipt/verify/gate.
 - CLI output tests should prefer `--out <file>` + file assertions to avoid brittle stdout interception and keep JSON/table checks deterministic.
+- Receipt signing pattern: compute `payload_sha256` over canonical JSON bytes of the unsigned receipt (sorted keys, no whitespace), then Ed25519-sign those exact bytes and store signature as base64.
 
 ---
 
@@ -272,4 +273,19 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/src/cli.ts`
   - `packages/cli/test/cli-options.test.ts`
 - **Learnings:** for CLI commands with multiple output modes, asserting file outputs via `--out` provides stable tests for both JSON and table without stdout mocking.
+---
+## 2026-02-15 15:56 - US-009: Receipt creation: `skillvault receipt` generates receipt.v1 and signs with Ed25519
+- Implemented signed receipt generation for `skillvault receipt` with required `--signing-key` and optional `--key-id` flags.
+- Added deterministic signing flow in `lib/receipt.ts`: canonical unsigned receipt JSON -> sha256 payload digest -> Ed25519 signature; embedded as `receipt.signature`.
+- Added fixture Ed25519 keys under `packages/cli/test/fixtures/keys` and regenerated deterministic receipt goldens.
+- Updated CLI/README/docs command references to document signing key requirements and expected PEM PKCS#8 format.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/lib/receipt.ts`
+  - `packages/cli/test/{receipt,cli-options,diff,goldens}.test.ts`
+  - `packages/cli/test/fixtures/keys/{ed25519-private.pem,ed25519-public.pem}`
+  - `packages/cli/test/goldens/{benign-skill,malicious-skill}/receipt.json`
+  - `docs/cli.md`
+  - `README.md`
+- **Learnings:** keep signing payload strictly to canonicalized unsigned receipt bytes; using the same byte source for both `payload_sha256` and `crypto.sign()` avoids subtle verification drift.
 ---

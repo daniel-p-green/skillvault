@@ -5,7 +5,7 @@ SkillVault is a **CLI-first trust layer** for SKILL.md bundles.
 Scope (v0.1 decisions):
 - Inputs are **local bundles only**: a directory or a `.zip`.
 - Bundles must contain **exactly one** manifest: `SKILL.md` or `skill.md`.
-- Receipts are **offline-verifiable via deterministic hashing** (no signatures in v0.1).
+- Receipts are **Ed25519-signed** and offline-verifiable via deterministic hashing + signature checks.
 - Scanning is **deterministic + rule-based** (no LLM scoring path).
 
 ## Conventions
@@ -67,14 +67,19 @@ Generate a portable receipt bound to a specific bundle hash + file list.
 **Synopsis**
 
 ```bash
-skillvault receipt <bundle_dir|bundle.zip> [--policy policy.yaml] [--out receipt.json] [--deterministic]
+skillvault receipt <bundle_dir|bundle.zip> [--policy policy.yaml] --signing-key ed25519-private.pem [--key-id id] [--out receipt.json] [--deterministic]
 ```
+
+**Signing key format**
+- `--signing-key` expects an Ed25519 private key in PEM PKCS#8 format (`-----BEGIN PRIVATE KEY-----`).
 
 **Example**
 
 ```bash
 node packages/cli/dist/cli.js receipt packages/cli/test/fixtures/benign-skill \
   --policy packages/cli/test/fixtures/policy-pass.yaml \
+  --signing-key packages/cli/test/fixtures/keys/ed25519-private.pem \
+  --key-id fixture-ed25519 \
   --out /tmp/skillvault-receipt.json \
   --deterministic
 ```

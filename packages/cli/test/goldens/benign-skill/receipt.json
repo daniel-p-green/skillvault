@@ -59,5 +59,10 @@
       "total": 0
     },
     "findings": []
+  },
+  "signature": {
+    "alg": "ed25519",
+    "payload_sha256": "69ef384996a25e38ab5453e7633ed4b9f2fdc1dae7377465de11b5b7364610b5",
+    "sig": "HkwOwBJ04v5qSM7TBdwFub3zexQl30hQA6npCKcP9H8OTZkN+TlzMd92uyOWS5lNqw5TClHhzMwvP17b9SoVCA=="
   }
 }

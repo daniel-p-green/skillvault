@@ -6,6 +6,7 @@ import { FIXTURES_DIR, GOLDENS_DIR, expectGolden, runCliToFile, writeTmpFile } f
 import { main } from '../src/cli.js';
 
 const policyPass = path.join(FIXTURES_DIR, 'policy-pass.yaml');
+const signingKey = path.join(FIXTURES_DIR, 'keys', 'ed25519-private.pem');
 
 describe('goldens (deterministic regression tests)', () => {
   it('scan/receipt/verify match goldens for benign fixture', async () => {
@@ -19,7 +20,10 @@ describe('goldens (deterministic regression tests)', () => {
     expect(codeScan).toBe(0);
     await expectGolden(scanOut, path.join(GOLDENS_DIR, 'benign-skill', 'scan.json'));
 
-    const codeReceipt = await runCliToFile(['receipt', bundle, '--policy', policyPass, '--deterministic', '--format', 'json'], receiptOut);
+    const codeReceipt = await runCliToFile(
+      ['receipt', bundle, '--policy', policyPass, '--signing-key', signingKey, '--deterministic', '--format', 'json'],
+      receiptOut
+    );
     expect(codeReceipt).toBe(0);
     await expectGolden(receiptOut, path.join(GOLDENS_DIR, 'benign-skill', 'receipt.json'));
 
@@ -41,7 +45,10 @@ describe('goldens (deterministic regression tests)', () => {
     expect(codeScan).toBe(0);
     await expectGolden(scanOut, path.join(GOLDENS_DIR, 'malicious-skill', 'scan.json'));
 
-    const codeReceipt = await runCliToFile(['receipt', bundle, '--policy', policyPass, '--deterministic', '--format', 'json'], receiptOut);
+    const codeReceipt = await runCliToFile(
+      ['receipt', bundle, '--policy', policyPass, '--signing-key', signingKey, '--deterministic', '--format', 'json'],
+      receiptOut
+    );
     expect(codeReceipt).toBe(0);
     await expectGolden(receiptOut, path.join(GOLDENS_DIR, 'malicious-skill', 'receipt.json'));
   });
@@ -71,7 +78,19 @@ describe('goldens (deterministic regression tests)', () => {
 
       // Generate a receipt for the *untampered* bundle.
       const receiptPath = path.join(tmpDir, 'receipt.json');
-      const receiptCode = await main(['node', 'skillvault', 'receipt', bundle, '--policy', policyPass, '--deterministic', '--out', receiptPath]);
+      const receiptCode = await main([
+        'node',
+        'skillvault',
+        'receipt',
+        bundle,
+        '--policy',
+        policyPass,
+        '--signing-key',
+        signingKey,
+        '--deterministic',
+        '--out',
+        receiptPath
+      ]);
       expect(receiptCode).toBe(0);
 
       // Tamper with a file.

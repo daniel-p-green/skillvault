@@ -72,8 +72,33 @@ describe('skillvault diff', () => {
       const diffOut = path.join(tmpDir, 'diff.json');
 
       // Same bundle twice => diff should be all unchanged.
-      await main(['node', 'skillvault', 'receipt', bundleDir, '--policy', policyPath, '--deterministic', '--out', receiptA]);
-      await main(['node', 'skillvault', 'receipt', bundleDir, '--policy', policyPath, '--deterministic', '--out', receiptB]);
+      const signingKey = path.join(FIXTURES, 'keys', 'ed25519-private.pem');
+      await main([
+        'node',
+        'skillvault',
+        'receipt',
+        bundleDir,
+        '--policy',
+        policyPath,
+        '--signing-key',
+        signingKey,
+        '--deterministic',
+        '--out',
+        receiptA
+      ]);
+      await main([
+        'node',
+        'skillvault',
+        'receipt',
+        bundleDir,
+        '--policy',
+        policyPath,
+        '--signing-key',
+        signingKey,
+        '--deterministic',
+        '--out',
+        receiptB
+      ]);
 
       const code = await main(['node', 'skillvault', 'diff', '--a', receiptA, '--b', receiptB, '--deterministic', '--out', diffOut]);
       expect(code).toBe(0);

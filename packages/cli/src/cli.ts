@@ -79,16 +79,28 @@ export async function main(argv = process.argv): Promise<number> {
     )
     .command(
       'receipt <bundle>',
-      'Generate an offline-verifiable receipt JSON for a bundle',
+      'Generate an offline-verifiable signed receipt JSON for a bundle',
       (cmd) =>
-        cmd.positional('bundle', {
-          type: 'string',
-          describe: 'Path to bundle directory or bundle.zip',
-          demandOption: true
-        }),
+        cmd
+          .positional('bundle', {
+            type: 'string',
+            describe: 'Path to bundle directory or bundle.zip',
+            demandOption: true
+          })
+          .option('signing-key', {
+            type: 'string',
+            demandOption: true,
+            describe: 'Path to Ed25519 private key PEM (PKCS#8)'
+          })
+          .option('key-id', {
+            type: 'string',
+            describe: 'Optional key identifier embedded in receipt.signature.key_id'
+          }),
       async (args) => {
         const receipt = await generateReceipt(String(args.bundle), {
           policyPath: args.policy ? String(args.policy) : undefined,
+          signingKeyPath: String(args.signingKey),
+          keyId: args.keyId ? String(args.keyId) : undefined,
           deterministic: Boolean(args.deterministic)
         });
 

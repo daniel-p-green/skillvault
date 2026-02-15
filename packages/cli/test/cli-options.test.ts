@@ -92,10 +92,21 @@ describe('shared CLI options', () => {
     expect(table).toContain('findings: ');
   });
 
-  it('accepts --format on receipt (even if currently unused)', async () => {
+  it('accepts --format on receipt with --signing-key', async () => {
     const bundleDir = path.join(FIXTURES, 'benign-skill');
+    const signingKey = path.join(FIXTURES, 'keys', 'ed25519-private.pem');
 
-    const code = await main(['node', 'skillvault', 'receipt', bundleDir, '--format', 'json', '--deterministic']);
+    const code = await main([
+      'node',
+      'skillvault',
+      'receipt',
+      bundleDir,
+      '--format',
+      'json',
+      '--signing-key',
+      signingKey,
+      '--deterministic'
+    ]);
     expect(code).toBe(0);
   });
 });
