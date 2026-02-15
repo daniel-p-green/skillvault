@@ -24,5 +24,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test (includes deterministic goldens)
+      - name: Test
         run: npm test
+
+      - name: Deterministic golden check
+        run: ./scripts/test-goldens.sh

@@ -1,0 +1,68 @@
+{
+  "contract_version": "0.1",
+  "created_at": "1970-01-01T00:00:00.000Z",
+  "scanner": {
+    "name": "skillvault",
+    "version": "0.0.0"
+  },
+  "bundle_sha256": "7c42f41066c7cd6c0a435241557ce7ecdd40203632d4633ec33a77dbf587ff75",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "size": 39,
+      "sha256": "1b0d0b0c6b5ceb7fc26ea526a0f29f17fcd50f990159a8ef24fbc2ec448480a0"
+    },
+    {
+      "path": "tool.js",
+      "size": 43,
+      "sha256": "438e4ea035b9923860eb74bf47196b6ab805cb00ab04978d2285d9f201706df8"
+    }
+  ],
+  "manifest": {
+    "path": "SKILL.md",
+    "size": 39,
+    "sha256": "1b0d0b0c6b5ceb7fc26ea526a0f29f17fcd50f990159a8ef24fbc2ec448480a0"
+  },
+  "scan": {
+    "capabilities": [],
+    "risk_score": {
+      "base_risk": 0,
+      "change_risk": 0,
+      "policy_delta": 0,
+      "total": 0
+    },
+    "summary": {
+      "file_count": 2,
+      "total_bytes": 82,
+      "deterministic": true
+    },
+    "findings": []
+  },
+  "policy": {
+    "contract_version": "0.1",
+    "verdict": "PASS",
+    "thresholds": {
+      "pass_max": 29,
+      "warn_max": 59,
+      "fail_max": 100
+    },
+    "gates": {
+      "max_risk_score": 29,
+      "allow_verdicts": [
+        "PASS"
+      ]
+    },
+    "risk_score": {
+      "base_risk": 0,
+      "change_risk": 0,
+      "policy_delta": 0,
+      "total": 0
+    },
+    "findings": []
+  },
+  "signature": {
+    "alg": "ed25519",
+    "payload_sha256": "69ef384996a25e38ab5453e7633ed4b9f2fdc1dae7377465de11b5b7364610b5",
+    "sig": "HkwOwBJ04v5qSM7TBdwFub3zexQl30hQA6npCKcP9H8OTZkN+TlzMd92uyOWS5lNqw5TClHhzMwvP17b9SoVCA=="
+  }
+}

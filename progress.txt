@@ -23,6 +23,8 @@ Started: 2026-02-10 19:07 America/Chicago
 - CLI output tests should prefer `--out <file>` + file assertions to avoid brittle stdout interception and keep JSON/table checks deterministic.
 - Receipt signing pattern: compute `payload_sha256` over canonical JSON bytes of the unsigned receipt (sorted keys, no whitespace), then Ed25519-sign those exact bytes and store signature as base64.
 - Signature verification pattern: canonicalize the same unsigned receipt payload bytes (receipt with `signature` removed), compare computed payload hash to `signature.payload_sha256`, then Ed25519-verify using either `--pubkey` or keyring lookup by `key_id`.
+- On macOS case-insensitive filesystems, keep multi-manifest fixtures as `.zip` inputs (`SKILL.md` + `skill.md`) to test exact-manifest-count constraints deterministically.
+- Golden drift checks should be runnable both in CI and locally via one script (`scripts/test-goldens.sh`) with explicit `--update` mode for controlled regeneration.
 
 ---
 
@@ -338,4 +340,19 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/src/lib/export.ts`
   - `packages/cli/test/export.test.ts`
 - **Learnings:** Reuse the same bytewise comparator across hash/diff/export flows so deterministic outputs remain stable across host locales.
+---
+## 2026-02-15 16:44 - US-014: Fixtures, goldens, and deterministic-mode CI for scan/receipt/verify/diff
+- Added missing fixture coverage under `packages/cli/test/fixtures`:
+  - bundle fixtures: `missing-manifest`, `oversized-skill`, `capability-triggers`, `multiple-manifest.zip`
+  - receipt fixtures: `fixtures/receipts/{benign-receipt,malicious-receipt}.json`
+  - strict limits policy fixture: `policy-strict-limits.yaml`
+- Added local golden-check script `scripts/test-goldens.sh` with `--update` mode and wired root scripts:
+  - `npm run test:goldens:check`
+  - `npm run test:goldens:update`
+- Expanded CI (`.github/workflows/ci.yml`) to run deterministic golden checks explicitly after tests.
+- Added regression tests for new fixtures and stable reason-code behavior in `packages/cli/test/fixtures-regression.test.ts`:
+  - missing manifest and multiple manifest reason-code checks
+  - oversized bundle verify failure with `CONSTRAINT_FILE_SIZE_LIMIT`
+  - capability-trigger fixture deterministic capability inference
+- **Learnings:** for multi-manifest fixture realism on macOS, zip fixtures are safer than directory fixtures because case-only filenames cannot coexist on default filesystems.
 ---
