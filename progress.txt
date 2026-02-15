@@ -13,6 +13,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
 - Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
 - Contract evolution pattern: export per-command contract IDs (`skillvault.<command>.v1`) from `contracts.ts` and assert their literal values in tests.
+- Canonical JSON for signing/goldens: recursively sort object keys (leave array order unchanged) and serialize without whitespace to produce byte-stable UTF-8 payloads.
 
 ---
 
@@ -170,4 +171,16 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/src/lib/export.ts`
   - `packages/cli/test/contracts.test.ts`
 - **Learnings:** Keep per-command contract identifiers as exported constants in one module so tests and CLI outputs can version independently from a single numeric `contract_version` string.
+---
+## 2026-02-15 14:43 - US-002: Implement deterministic clock + canonical JSON serialization utilities
+- Added `src/util/determinism.ts` with frozen deterministic timestamp constant and helper for runtime/deterministic `created_at` generation.
+- Added `src/util/canonicalJson.ts` with canonical serializer + UTF-8 byte encoder for deterministic payload hashing/signing inputs.
+- Updated `src/lib/time.ts` to delegate to the new determinism utility while preserving existing API usage across scan/receipt/verify/gate/diff/export.
+- Added unit tests for canonical nested key ordering, byte-stable UTF-8 output, and deterministic/non-deterministic clock behavior.
+- Files changed:
+  - `packages/cli/src/util/determinism.ts`
+  - `packages/cli/src/util/canonicalJson.ts`
+  - `packages/cli/src/lib/time.ts`
+  - `packages/cli/test/determinism.test.ts`
+- **Learnings:** keep deterministic primitives (`created_at`, canonical JSON bytes) in dedicated utility modules so signing, goldens, and report generation reuse one implementation.
 ---
