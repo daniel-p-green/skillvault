@@ -12,6 +12,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
 - Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
 - Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
+- Contract evolution pattern: export per-command contract IDs (`skillvault.<command>.v1`) from `contracts.ts` and assert their literal values in tests.
 
 ---
 
@@ -157,4 +158,16 @@ Started: 2026-02-10 19:07 America/Chicago
   - `docs/{cli,policy,scoring,PRD}.md`
   - `packages/cli/test/docs-smoke.test.ts`
 - **Learnings:** For doc smoke tests, keep assertions string-based (command names + required files) rather than snapshots so future doc edits don’t cause noisy golden churn.
+---
+## 2026-02-15 14:40 - US-001: Define v0.1 JSON contracts: scan.v1 + receipt.v1 + verify/gate/diff/export
+- Added explicit contract identifier exports in `contracts.ts` for each CLI output surface: `skillvault.scan.v1`, `skillvault.receipt.v1`, `skillvault.verify.v1`, `skillvault.gate.v1`, `skillvault.diff.v1`, `skillvault.export.v1`.
+- Extended receipt contract with signed envelope schema: `signature: { alg: 'ed25519', key_id?, payload_sha256, sig }`.
+- Added additive-only reason codes for signature/receipt schema failures: `RECEIPT_SCHEMA_INVALID`, `SIGNATURE_INVALID`, `SIGNATURE_KEY_NOT_FOUND`.
+- Moved `ExportReport` contract shape into shared `contracts.ts` and updated export lib to consume it.
+- Added contract tests validating new contract-id constants and updated stable ReasonCodes list.
+- Files changed:
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/export.ts`
+  - `packages/cli/test/contracts.test.ts`
+- **Learnings:** Keep per-command contract identifiers as exported constants in one module so tests and CLI outputs can version independently from a single numeric `contract_version` string.
 ---

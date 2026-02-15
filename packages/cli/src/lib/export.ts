@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 
-import type { Finding, ReasonCode } from '../contracts.js';
+import type { ExportReport, Finding, ReasonCode } from '../contracts.js';
 import { CONTRACT_VERSION } from '../contracts.js';
 import { nowIso, DETERMINISTIC_CREATED_AT_ISO } from './time.js';
 import { readBundle } from './bundle.js';
@@ -15,17 +15,6 @@ export interface ExportOptions {
   policyPath?: string;
   profile: string;
   deterministic: boolean;
-}
-
-export interface ExportReport {
-  contract_version: typeof CONTRACT_VERSION;
-  created_at: string;
-  profile: string;
-  out_path: string;
-  bundle_sha256: string;
-  files: Array<{ path: string; size: number; sha256: string }>;
-  findings: Finding[];
-  validated: boolean;
 }
 
 function addFinding(findings: Finding[], code: ReasonCode, severity: Finding['severity'], message: string, extra?: Partial<Finding>): void {
