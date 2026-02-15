@@ -19,7 +19,9 @@
     "size": 272,
     "sha256": "6c5c756b4b134d1f7c3dd166d65dc7fea4ea6f7d623debb6bbe84e772b3a7458"
   },
-  "capabilities": [],
+  "capabilities": [
+    "exec"
+  ],
   "risk_score": {
     "base_risk": 0,
     "change_risk": 0,

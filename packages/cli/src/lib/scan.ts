@@ -4,6 +4,7 @@ import { readBundle } from './bundle.js';
 import { computeBundleSha256, hashBundleFiles, sha256Hex } from '../bundle/hashing.js';
 import { nowIso } from './time.js';
 import { detectManifestFromEntries } from '../manifest/manifest.js';
+import { inferCapabilities } from '../scan/capabilities.js';
 
 export interface ScanOptions {
   deterministic: boolean;
@@ -21,8 +22,7 @@ export async function scanBundle(pathOrZip: string, opts: ScanOptions): Promise<
     ? { path: manifestFile.path, size: manifestFile.size, sha256: manifestFile.sha256 }
     : { path: 'SKILL.md', size: 0, sha256: sha256Hex(new Uint8Array()) };
 
-  // v0.1 receipt story: scanner findings/scoring can be minimal. Future stories add inference.
-  const capabilities: Capability[] = [];
+  const capabilities: Capability[] = inferCapabilities(bundle.files);
 
   const risk_score: RiskScore = {
     base_risk: 0,
