@@ -7,6 +7,7 @@ import { decidePolicy } from './policy.js';
 import { loadPolicyV1 } from './policy-loader.js';
 import type { PolicyProfileV1 } from '../policy-v1.js';
 import { scanBundle } from './scan.js';
+import { detectManifestFromEntries } from '../manifest/manifest.js';
 
 interface MinimalReceipt {
   contract_version?: string;
@@ -25,10 +26,6 @@ interface MinimalReceipt {
 
 function addFinding(findings: Finding[], code: ReasonCode, severity: Finding['severity'], message: string, extra?: Partial<Finding>): void {
   findings.push({ code, severity, message, ...extra });
-}
-
-function isManifestPath(p: string): boolean {
-  return p === 'SKILL.md' || p === 'skill.md';
 }
 
 async function readReceipt(receiptPath: string): Promise<{ receipt?: MinimalReceipt; errorFinding?: Finding }> {
@@ -101,15 +98,8 @@ function enforceConstraintsFromEntries(findings: Finding[], profile: PolicyProfi
   if (!constraints) return;
 
   if (constraints.exactly_one_manifest) {
-    const manifestCandidates = entries.filter((f) => isManifestPath(f.path));
-    if (manifestCandidates.length !== 1) {
-      addFinding(
-        findings,
-        'CONSTRAINT_MANIFEST_COUNT',
-        'error',
-        `Expected exactly one manifest (SKILL.md or skill.md) in bundle root; found ${manifestCandidates.length}`
-      );
-    }
+    const { findings: manifestFindings } = detectManifestFromEntries(entries.map((f) => ({ ...f, sha256: '' })));
+    findings.push(...manifestFindings);
   }
 
   if (typeof constraints.bundle_size_limit_bytes === 'number') {

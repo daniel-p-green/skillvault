@@ -8,6 +8,8 @@ import { bundleSha256FromEntries, sha256Hex } from './hash.js';
 import { nowIso } from './time.js';
 import { loadPolicyV1 } from './policy-loader.js';
 import type { PolicyProfileV1 } from '../policy-v1.js';
+import { detectManifestFromEntries } from '../manifest/manifest.js';
+import { tokenCountNormalized } from '../text/normalize.js';
 
 export interface VerifyOptions {
   receiptPath: string;
@@ -29,21 +31,6 @@ interface MinimalReceipt {
 
 function addFinding(findings: Finding[], code: ReasonCode, severity: Finding['severity'], message: string, extra?: Partial<Finding>): void {
   findings.push({ code, severity, message, ...extra });
-}
-
-function isManifestPath(p: string): boolean {
-  return p === 'SKILL.md' || p === 'skill.md';
-}
-
-function normalizeTextForTokenCount(input: string): string {
-  // For deterministic token count only; hashing uses raw bytes.
-  return input.normalize('NFC').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
-
-function tokenCount(text: string): number {
-  const norm = normalizeTextForTokenCount(text);
-  const parts = norm.split(/\s+/g).filter(Boolean);
-  return parts.length;
 }
 
 async function readReceipt(receiptPath: string): Promise<{ receipt?: MinimalReceipt; errorFinding?: Finding }> {
@@ -189,15 +176,8 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
   // Constraints enforcement (policy.constraints).
   const constraints = profile?.constraints;
   if (constraints?.exactly_one_manifest) {
-    const manifestCandidates = computedFiles.filter((f) => isManifestPath(f.path));
-    if (manifestCandidates.length !== 1) {
-      addFinding(
-        findings,
-        'CONSTRAINT_MANIFEST_COUNT',
-        'error',
-        `Expected exactly one manifest (SKILL.md or skill.md) in bundle root; found ${manifestCandidates.length}`
-      );
-    }
+    const { findings: manifestFindings } = detectManifestFromEntries(computedFiles);
+    findings.push(...manifestFindings);
   }
 
   if (typeof constraints?.bundle_size_limit_bytes === 'number') {
@@ -221,10 +201,11 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
   }
 
   if (typeof constraints?.max_manifest_tokens_warn === 'number' || typeof constraints?.max_manifest_tokens_fail === 'number') {
-    const manifest = bundle.files.find((f) => isManifestPath(f.path));
+    const manifestPath = detectManifestFromEntries(computedFiles).manifest?.path;
+    const manifest = manifestPath ? bundle.files.find((f) => f.path === manifestPath) : undefined;
     if (manifest) {
       const text = new TextDecoder('utf-8', { fatal: false }).decode(manifest.bytes);
-      const tokens = tokenCount(text);
+      const tokens = tokenCountNormalized(text);
 
       if (typeof constraints.max_manifest_tokens_warn === 'number' && tokens > constraints.max_manifest_tokens_warn) {
         addFinding(findings, 'CONSTRAINT_TOKEN_LIMIT_WARN', 'warn', `Manifest token count ${tokens} exceeds warn threshold ${constraints.max_manifest_tokens_warn}`, {

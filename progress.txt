@@ -14,6 +14,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
 - Contract evolution pattern: export per-command contract IDs (`skillvault.<command>.v1`) from `contracts.ts` and assert their literal values in tests.
 - Canonical JSON for signing/goldens: recursively sort object keys (leave array order unchanged) and serialize without whitespace to produce byte-stable UTF-8 payloads.
+- Shared trust helpers live in `src/manifest/*` and `src/text/*`; use them across scan/verify/gate/export to keep manifest findings and normalization/token behavior deterministic.
 
 ---
 
@@ -200,4 +201,16 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/bundle-hashing.test.ts`
   - `packages/cli/test/goldens/**`
 - **Learnings:** when hash contracts change, golden fixtures catch downstream drift immediately; keep canonicalization logic centralized and reused by scan/receipt/verify/diff paths.
+---
+## 2026-02-15 15:05 - US-004: Manifest detection + text normalization (UTF-8 NFC + newline normalization)
+- Added `packages/cli/src/manifest/manifest.ts` for deterministic root-manifest detection (`SKILL.md`/`skill.md`) with stable `CONSTRAINT_MANIFEST_COUNT` findings when count != 1.
+- Added `packages/cli/src/text/normalize.ts` for deterministic text normalization (UTF-8 NFC + `\n` newline normalization) and normalized token counting for analysis-only paths.
+- Updated scan/verify/gate/export flows to reuse manifest detection and normalization helpers while preserving raw-byte hashing behavior.
+- Added tests covering manifest count violations, root-manifest selection, normalization behavior, and proof that manifest SHA-256 comes from raw bytes (not normalized text).
+- Files changed:
+  - `packages/cli/src/manifest/manifest.ts`
+  - `packages/cli/src/text/normalize.ts`
+  - `packages/cli/src/lib/{scan,verify,gate,export}.ts`
+  - `packages/cli/test/manifest-normalize.test.ts`
+- **Learnings:** centralize manifest-count and normalization rules in shared helpers so scan/verify/gate/export stay consistent and reason-code output remains stable.
 ---
