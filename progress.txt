@@ -18,6 +18,7 @@ Started: 2026-02-10 19:07 America/Chicago
 - Policy parsing pattern: keep one strict parser (`src/policy/policy.ts`) that merges validated YAML overlays onto a stable `DEFAULT_POLICY_V1`, so omitted `--policy` behavior is deterministic across commands.
 - Capability inference pattern: keep a fixed rule-map module (`src/scan/capabilities.ts`) with path/content regexes over normalized text, then dedupe + lexicographically sort capabilities for stable receipts/gates.
 - Risk scoring pattern: compute `risk_score` through a single pure helper (`src/scan/scoring.ts`) that clamps components and total deterministically, then reuse scan output in receipt/verify/gate.
+- CLI output tests should prefer `--out <file>` + file assertions to avoid brittle stdout interception and keep JSON/table checks deterministic.
 
 ---
 
@@ -259,4 +260,16 @@ Started: 2026-02-10 19:07 America/Chicago
   - `packages/cli/test/scoring.test.ts`
   - `packages/cli/test/goldens/malicious-skill/{scan,receipt}.json`
 - **Learnings:** keep scoring as a pure function over capabilities/findings + explicit deltas so scan/receipt/verify/gate inherit the same deterministic risk semantics.
+---
+## 2026-02-15 15:44 - US-008: Implement `skillvault scan` command with JSON/table output and `--out`
+- Updated CLI command signature to `scan <bundle_dir_or_zip>` and wired positional parsing to that explicit input contract.
+- Added command-level behavior tests for scan:
+  - deterministic JSON output written via `--out`
+  - `.zip` input support and deterministic parity with directory input (same `bundle_sha256` + file list)
+  - stable table output written via `--out`
+- Kept `--policy` accepted on scan (shared parser option) while preserving deterministic scan pipeline behavior.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/test/cli-options.test.ts`
+- **Learnings:** for CLI commands with multiple output modes, asserting file outputs via `--out` provides stable tests for both JSON and table without stdout mocking.
 ---

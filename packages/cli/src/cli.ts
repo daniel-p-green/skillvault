@@ -41,16 +41,16 @@ export async function main(argv = process.argv): Promise<number> {
       describe: 'Freeze timestamps and enforce stable ordering for golden outputs'
     })
     .command(
-      'scan <bundle>',
+      'scan <bundle_dir_or_zip>',
       'Scan a bundle and emit a deterministic scan report',
       (cmd) =>
-        cmd.positional('bundle', {
+        cmd.positional('bundle_dir_or_zip', {
           type: 'string',
           describe: 'Path to bundle directory or bundle.zip',
           demandOption: true
         }),
       async (args) => {
-        const report = await scanBundle(String(args.bundle), { deterministic: Boolean(args.deterministic) });
+        const report = await scanBundle(String(args.bundle_dir_or_zip), { deterministic: Boolean(args.deterministic) });
 
         if (args.format === 'table') {
           const lines: string[] = [];
