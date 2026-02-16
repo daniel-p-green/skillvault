@@ -5,19 +5,48 @@ import { hideBin } from 'yargs/helpers';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 
+import { startServer } from '@skillvault/manager-api';
+import { SkillVaultManager, type InstallMode, type InstallScope, type TrustVerdict } from '@skillvault/manager-core';
 import { generateReceipt } from './lib/receipt.js';
 import { scanBundle } from './lib/scan.js';
-import { verifyBundle } from './lib/verify.js';
-import { gateFromBundle, gateFromReceipt } from './lib/gate.js';
+import { verifyBundle, verifyReceiptSignatureOnly } from './lib/verify.js';
+import { failGateFromFindings, gateFromBundle, gateFromReceipt } from './lib/gate.js';
 import { diffInputs } from './lib/diff.js';
 import { exportBundleToZip } from './lib/export.js';
+
+async function writeOutput(args: { out?: string | unknown }, content: string): Promise<void> {
+  if (args.out) {
+    await fs.writeFile(String(args.out), content, 'utf8');
+    return;
+  }
+  process.stdout.write(content);
+}
+
+function requireManagerRoot(args: { root?: string | unknown }): string {
+  return args.root ? String(args.root) : process.cwd();
+}
+
+async function withManager<T>(root: string, run: (manager: SkillVaultManager) => Promise<T>): Promise<T> {
+  const manager = new SkillVaultManager(root);
+  await manager.init();
+  try {
+    return await run(manager);
+  } finally {
+    await manager.close();
+  }
+}
 
 export async function main(argv = process.argv): Promise<number> {
   // `process.exitCode` persists across multiple `main()` calls in the same process (tests).
   // Reset it so one command's exit code doesn't leak into the next.
   process.exitCode = 0;
 
-  const parser = yargs(hideBin(argv))
+  const normalizedArgv = [...argv];
+  if (normalizedArgv[2] === 'manager' && normalizedArgv[3] === 'import') {
+    normalizedArgv[3] = 'ingest';
+  }
+
+  const parser = yargs(hideBin(normalizedArgv))
     .scriptName('skillvault')
     .strict()
     .help()
@@ -214,6 +243,18 @@ export async function main(argv = process.argv): Promise<number> {
           .option('receipt', {
             type: 'string',
             describe: 'Path to receipt.json (skip scanning and use receipt scan summary)'
+          })
+          .option('pubkey', {
+            type: 'string',
+            describe: 'Path to Ed25519 public key PEM for receipt trust verification (required with --receipt)'
+          })
+          .option('keyring', {
+            type: 'string',
+            describe: 'Directory of Ed25519 public keys (required with --receipt, lookup by key_id)'
+          })
+          .option('bundle', {
+            type: 'string',
+            describe: 'Optional bundle path used with --receipt for full hash verification before policy gating'
           }),
       async (args) => {
         if (!args.policy) {
@@ -239,9 +280,50 @@ export async function main(argv = process.argv): Promise<number> {
 
         const deterministic = Boolean(args.deterministic);
 
-        const { report, exitCode } = receiptPath
-          ? await gateFromReceipt(receiptPath, { policyPath: String(args.policy), deterministic })
-          : await gateFromBundle(String(bundlePath), { policyPath: String(args.policy), deterministic });
+        let reportResult: { report: unknown; exitCode: number };
+        if (receiptPath) {
+          const pubkeyPath = args.pubkey ? String(args.pubkey) : undefined;
+          const keyringDir = args.keyring ? String(args.keyring) : undefined;
+          if ((pubkeyPath && keyringDir) || (!pubkeyPath && !keyringDir)) {
+            console.error('gate --receipt requires exactly one of --pubkey <file> or --keyring <dir>');
+            process.exitCode = 2;
+            return;
+          }
+
+          const trust = await verifyReceiptSignatureOnly(receiptPath, { pubkeyPath, keyringDir });
+          if (!trust.verified) {
+            reportResult = failGateFromFindings(trust.findings, deterministic);
+          } else if (args.bundle) {
+            const verify = await verifyBundle(String(args.bundle), {
+              receiptPath,
+              policyPath: undefined,
+              pubkeyPath,
+              keyringDir,
+              offline: false,
+              deterministic
+            });
+            if (verify.exitCode !== 0 || !verify.report.verified) {
+              reportResult = failGateFromFindings(verify.report.findings, deterministic);
+            } else {
+              reportResult = await gateFromReceipt(receiptPath, {
+                policyPath: String(args.policy),
+                deterministic
+              });
+            }
+          } else {
+            reportResult = await gateFromReceipt(receiptPath, {
+              policyPath: String(args.policy),
+              deterministic
+            });
+          }
+        } else {
+          reportResult = await gateFromBundle(String(bundlePath), {
+            policyPath: String(args.policy),
+            deterministic
+          });
+        }
+
+        const { report, exitCode } = reportResult as { report: any; exitCode: number };
 
         if (args.format === 'table') {
           const lines: string[] = [];
@@ -368,6 +450,277 @@ export async function main(argv = process.argv): Promise<number> {
 
         process.exitCode = report.validated ? 0 : 1;
       }
+    )
+    .command(
+      'manager',
+      'SkillVault manager backend commands',
+      (managerCmd) =>
+        managerCmd
+          .command(
+            'init',
+            'Initialize SkillVault manager storage in the selected root',
+            (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const result = await withManager(root, async (manager) => manager.init());
+              await writeOutput(args, JSON.stringify(result, null, 2) + '\n');
+            }
+          )
+          .command(
+            'adapters list',
+            'List known adapters and enablement state',
+            (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const adapters = await withManager(root, async (manager) => manager.listAdapters());
+              if (args.format === 'table') {
+                const lines = [
+                  'id | enabled | projectPath | globalPath',
+                  ...adapters.map((adapter) => `${adapter.id} | ${adapter.isEnabled ? 'yes' : 'no'} | ${adapter.projectPath} | ${adapter.globalPath}`)
+                ];
+                await writeOutput(args, `${lines.join('\n')}\n`);
+                return;
+              }
+              await writeOutput(args, `${JSON.stringify({ adapters }, null, 2)}\n`);
+            }
+          )
+          .command(
+            'adapters sync-snapshot',
+            'Sync built-in + override adapter snapshot into manager storage',
+            (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const result = await withManager(root, async (manager) => manager.syncAdapterSnapshot());
+              await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+            }
+          )
+          .command(
+            ['import <bundle_dir_or_zip>', 'ingest <bundle_dir_or_zip>'],
+            'Import skill bundle into canonical vault, scan, and create manager receipt',
+            (cmd) =>
+              cmd
+                .positional('bundle_dir_or_zip', {
+                  type: 'string',
+                  demandOption: true,
+                  describe: 'Path to bundle directory or bundle.zip'
+                })
+                .option('source', {
+                  type: 'string',
+                  describe: 'Source locator (path/url/ref)'
+                })
+                .option('policy', {
+                  type: 'string',
+                  describe: 'Policy file reference recorded with import metadata'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const sourceLocator = args.source ? String(args.source) : String(args.bundle_dir_or_zip);
+              const result = await withManager(root, async (manager) =>
+                manager.importSkill(String(args.bundle_dir_or_zip), {
+                  sourceType: args.source ? 'source' : 'path',
+                  sourceLocator: args.policy ? `${sourceLocator}#policy=${String(args.policy)}` : sourceLocator
+                })
+              );
+              await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+            }
+          )
+          .command(
+            'inventory',
+            'List current inventory from manager vault',
+            (cmd) =>
+              cmd
+                .option('risk', {
+                  choices: ['PASS', 'WARN', 'FAIL'] as const,
+                  describe: 'Filter by trust verdict'
+                })
+                .option('adapter', {
+                  type: 'string',
+                  describe: 'Filter by adapter id'
+                })
+                .option('search', {
+                  type: 'string',
+                  describe: 'Search text'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const skills = await withManager(root, async (manager) =>
+                manager.inventory({
+                  risk: args.risk as TrustVerdict | undefined,
+                  adapter: args.adapter ? String(args.adapter) : undefined,
+                  search: args.search ? String(args.search) : undefined
+                })
+              );
+              if (args.format === 'table') {
+                const lines = [
+                  'id | verdict | risk | version',
+                  ...skills.map((skill) => `${skill.id} | ${skill.verdict ?? '-'} | ${skill.risk_total ?? 0} | ${skill.version_hash.slice(0, 12)}`)
+                ];
+                await writeOutput(args, `${lines.join('\n')}\n`);
+                return;
+              }
+              await writeOutput(args, `${JSON.stringify({ skills }, null, 2)}\n`);
+            }
+          )
+          .command(
+            'deploy <skill_id>',
+            'Deploy skill to adapter(s)',
+            (cmd) =>
+              cmd
+                .positional('skill_id', {
+                  type: 'string',
+                  demandOption: true,
+                  describe: 'Skill id in inventory'
+                })
+                .option('adapter', {
+                  type: 'string',
+                  demandOption: true,
+                  describe: 'Adapter id or * for all enabled adapters'
+                })
+                .option('scope', {
+                  choices: ['project', 'global'] as const,
+                  default: 'project',
+                  describe: 'Install scope'
+                })
+                .option('mode', {
+                  choices: ['copy', 'symlink'] as const,
+                  default: 'symlink',
+                  describe: 'Install mode'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const deployments = await withManager(root, async (manager) =>
+                manager.deploy(String(args.skill_id), {
+                  adapter: String(args.adapter),
+                  scope: args.scope as InstallScope,
+                  mode: args.mode as InstallMode
+                })
+              );
+              await writeOutput(args, `${JSON.stringify({ deployments }, null, 2)}\n`);
+            }
+          )
+          .command(
+            'undeploy <skill_id>',
+            'Remove skill from adapter(s)',
+            (cmd) =>
+              cmd
+                .positional('skill_id', {
+                  type: 'string',
+                  demandOption: true,
+                  describe: 'Skill id in inventory'
+                })
+                .option('adapter', {
+                  type: 'string',
+                  demandOption: true,
+                  describe: 'Adapter id or * for all enabled adapters'
+                })
+                .option('scope', {
+                  choices: ['project', 'global'] as const,
+                  default: 'project',
+                  describe: 'Install scope to remove from'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const undeployed = await withManager(root, async (manager) =>
+                manager.undeploy(String(args.skill_id), {
+                  adapter: String(args.adapter),
+                  scope: args.scope as InstallScope
+                })
+              );
+              await writeOutput(args, `${JSON.stringify({ undeployed }, null, 2)}\n`);
+            }
+          )
+          .command(
+            'audit',
+            'Summarize stale scans and deployment drift',
+            (cmd) =>
+              cmd
+                .option('stale-days', {
+                  type: 'number',
+                  default: 14,
+                  describe: 'Staleness threshold in days'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const summary = await withManager(root, async (manager) => manager.audit(Number(args.staleDays ?? 14)));
+              if (args.format === 'table') {
+                const lines = [
+                  `skills: ${summary.totals.skills}`,
+                  `deployments: ${summary.totals.deployments}`,
+                  `stale_skills: ${summary.totals.staleSkills}`,
+                  `drifted_deployments: ${summary.totals.driftedDeployments}`
+                ];
+                await writeOutput(args, `${lines.join('\n')}\n`);
+                return;
+              }
+              await writeOutput(args, `${JSON.stringify(summary, null, 2)}\n`);
+            }
+          )
+          .command(
+            'discover',
+            'Search skills.sh via npx skills find',
+            (cmd) =>
+              cmd
+                .option('query', {
+                  type: 'string',
+                  demandOption: true,
+                  describe: 'Discovery query text'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const results = await withManager(root, async (manager) => manager.discover(String(args.query)));
+              await writeOutput(args, `${JSON.stringify({ results }, null, 2)}\n`);
+            }
+          )
+          .command(
+            'serve',
+            'Start local manager API server for GUI',
+            (cmd) =>
+              cmd
+                .option('port', {
+                  type: 'number',
+                  default: 4646,
+                  describe: 'HTTP port for manager API'
+                })
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const port = Number(args.port ?? 4646);
+              await startServer({
+                port: Number.isFinite(port) ? port : 4646,
+                rootDir: root
+              });
+              process.stdout.write(`SkillVault manager API listening on http://127.0.0.1:${Number.isFinite(port) ? port : 4646}\n`);
+            }
+          )
+          .demandCommand(1, 'Provide a manager subcommand'),
+      async () => {}
     )
     .demandCommand(1, 'Provide a command');
 

@@ -1,0 +1,26 @@
+{
+  "name": "@skillvault/manager-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@skillvault/manager-core": "file:../manager-core",
+    "fastify": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}

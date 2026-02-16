@@ -1,66 +1,87 @@
-# SkillVault PRD (v0.1)
+# SkillVault PRD (v0.2)
 
-**Positioning:** SkillVault is a **trust receipt generator and policy gate** for SKILL.md bundles. It is not an installer, registry, or marketplace.
+## Product Positioning
 
-Directive artifacts (v0.1 scope):
-- **Skill bundles anchored by `SKILL.md`/`skill.md`** (exactly one manifest)
+SkillVault v0.2 is a local-first manager for trusted skill operations across multiple AI coding apps.  
+It extends v0.1 trust primitives into an operational platform with inventory, deployments, audit, API, and GUI.
 
-## Problem
-People increasingly install procedural instructions from strangers (skills, instruction packs, agent guidance). This is the “npm moment” for agent behavior, but:
-- The payload is often **natural language** (harder to review than code).
-- Update semantics are fragmented across tools.
-- There is no consistent local trust layer: scan → evidence → receipt → verify → gate.
+## Problem Statement
 
-## Goals (v0.1)
-1) **Scan before use**: local deterministic scanning with machine-readable findings.
-2) **Diff-aware change detection**: show what changed between versions/hashes.
-3) **Receipts**: generate a portable, verifiable receipt that travels with the artifact.
-4) **Policy gating**: enforce allow/block/require-approval workflows based on deterministic evidence.
-5) **Strict export**: export a directory bundle to a strict zip that passes bundle validation.
+Teams increasingly run the same skills in multiple agent ecosystems (Codex, Windsurf, OpenClaw, Cursor, Claude Code, and others), but today they lack:
+- a unified local inventory
+- cross-app deployment control
+- durable trust and audit history
+- drift and stale-state visibility
 
-## Non-goals (v0.1)
-- Installer/discovery/marketplace
-- URL inputs / remote fetching
-- Cryptographic signing (planned for v0.2)
-- LLM-based semantic scanning in the scoring path
-- Team access control / shared vault server
+## Goals
 
-## Core UX (CLI-first)
+1. Provide a canonical local vault for skill versions and receipts.
+2. Support multi-app deployment with adapter abstraction and parity snapshot coverage.
+3. Preserve deterministic trust workflows (`scan`, `receipt`, `verify`, `gate`, `diff`, `export`).
+4. Deliver manager API + GUI for operations workflows.
+5. Enforce security hardening in receipt gating and receipt policy generation.
 
-### Must-ship commands (v0.1)
+## Non-Goals
 
-```bash
-skillvault scan <bundle_dir|bundle.zip> [--policy policy.yaml] [--format json|table] [--out file] [--deterministic]
-skillvault receipt <bundle_dir|bundle.zip> [--policy policy.yaml] [--out receipt.json] [--deterministic]
-skillvault verify <bundle_dir|bundle.zip> --receipt receipt.json [--policy policy.yaml] [--offline] [--format json|table] [--deterministic]
-skillvault gate (--receipt receipt.json | <bundle>) --policy policy.yaml [--format json|table] [--deterministic]
-skillvault diff --a <bundle|receipt> --b <bundle|receipt> [--format json|table] [--deterministic]
-skillvault export <bundle_dir> --out bundle.zip [--policy policy.yaml] [--profile strict_v0]
-```
+- Hosted SaaS control plane (v0.2 remains local-first).
+- Remote bundle fetching as a trust default.
+- Marketplace curation and ranking.
+- Enterprise RBAC and centralized policy distribution.
 
-Notes:
-- Receipts are **offline-verifiable**: verification recomputes per-file sha256 + bundle sha256 and fails deterministically on mismatch.
-- Bundles are **SKILL.md-only** in v0.1 (exactly one manifest).
+## Personas
 
-## Scoring model (v0.1)
+- **Security-minded solo dev**: wants deterministic trust checks before installing skills.
+- **Power user with multiple apps**: wants one place to deploy and audit skills across adapters.
+- **Team lead**: wants reproducible local workflow and testable guardrails for CI.
 
-SkillVault v0.1 uses a single deterministic **risk score**:
-- `risk_score.total` in **[0, 100]** (higher = riskier)
-- Verdict thresholds:
-  - PASS 0–29
-  - WARN 30–59
-  - FAIL 60–100
+## Core Functional Requirements
 
-Risk score components:
-- `base_risk`
-- `change_risk`
-- `policy_delta`
+### Trust Layer (Backwards compatible)
 
-See: `docs/scoring.md`.
+- `scan`, `receipt`, `verify`, `gate`, `diff`, `export` remain available.
+- `gate --receipt` requires trust key input:
+  - exactly one of `--pubkey` or `--keyring`
+- `gate --receipt` must verify signature before policy gating.
+- optional `gate --receipt --bundle <path>` verifies full bundle hash/integrity before policy gating.
+- receipt policy is forced to `FAIL` when scan findings contain any `error` severity finding.
 
-## Acceptance criteria (v0.1)
-- Can scan a benign and malicious fixture and produce deterministic JSON outputs.
-- Can generate a receipt that is verifiable offline via `verify`.
-- Can diff two versions (bundle/receipt inputs) and show security-relevant changes.
-- Can export a strict zip within profile constraints and re-validate it.
-- Includes fixtures + golden tests that enforce byte-for-byte determinism in `--deterministic` mode.
+### Manager Layer
+
+- Manager storage root: `.skillvault/`
+- SQLite metadata + file vault:
+  - `skillvault.db`
+  - `vault/<skill_id>/<version_hash>/...`
+  - `receipts/<receipt_id>.json`
+- Adapter registry with built-ins and override support.
+- Import, inventory, deploy, undeploy, audit, and discovery workflows.
+- Drift detection on missing paths, symlink divergence, and copy-mode content mutation.
+
+### API Layer
+
+- Local Fastify API for manager workflows:
+  - `/health`, `/adapters`, `/skills`, `/deployments`, `/audit/summary`, `/discover`, etc.
+
+### GUI Layer
+
+- React + TypeScript + Vite manager web app.
+- Pages:
+  - Dashboard
+  - Skill Detail
+  - Adapters
+  - Deploy Flow
+  - Audit
+  - Discover
+
+## Success Metrics
+
+- Import -> deploy -> audit workflow completes locally without manual file editing.
+- Multi-adapter deploy succeeds for milestone adapters (`codex`, `windsurf`, `openclaw`, `cursor`, `claude-code`).
+- Trust-gate bypass via unsigned/invalid receipt is blocked deterministically.
+- Documentation covers JTBD, use cases, stories, and executable test cases.
+
+## Release Acceptance (v0.2)
+
+1. Workspace build/typecheck/test passes for `cli`, `manager-core`, `manager-api`, and `manager-web`.
+2. Manager commands are callable from CLI under `skillvault manager ...`.
+3. Security hardening tests pass for gate trust enforcement and receipt fail-on-scan-error.
+4. Product docs in `docs/product/` meet required headings and traceability.

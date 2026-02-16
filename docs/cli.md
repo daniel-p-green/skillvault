@@ -1,186 +1,126 @@
-# CLI reference (v0.1)
+# CLI reference (v0.2)
 
-SkillVault is a **CLI-first trust layer** for SKILL.md bundles.
+SkillVault ships two command families:
+- **Trust layer (v0.1-compatible)**: deterministic scan/receipt/verify/gate/diff/export
+- **Manager layer (v0.2)**: local vault inventory, deployment, audit, discovery, API serving
 
-Scope (v0.1 decisions):
-- Inputs are **local bundles only**: a directory or a `.zip`.
-- Bundles must contain **exactly one** manifest: `SKILL.md` or `skill.md`.
-- Receipts are **Ed25519-signed** and offline-verifiable via deterministic hashing + signature checks.
-- Scanning is **deterministic + rule-based** (no LLM scoring path).
+## Global options
 
-## Conventions
-
-### Bundle input
-Every command that accepts a bundle takes:
-- `<bundle_dir>` (a directory), or
-- `<bundle.zip>` (a zip file)
-
-### Output formats
-Most commands support:
-- `--format json` (default in tests/goldens)
-- `--format table` (human readable)
-
-### Deterministic mode
-`--deterministic` freezes any time-based fields (e.g., `created_at`) and ensures stable ordering so outputs can be compared byte-for-byte.
-
-### Writing output
-Many commands support:
-- `--out <path>` to write the JSON/table output to a file.
-
-### Exit codes (v0.1)
-- `0`: success (including PASS and WARN)
-- `1`: error (including FAIL, verify failures, policy/constraint violations)
+- `--format json|table` (default: `json`)
+- `--out <file>`
+- `--deterministic`
+- `--policy <policy.yaml>` (used by trust/gate flows and optionally attached to manager import metadata)
 
 ---
 
-## `skillvault scan`
+## Trust commands
 
-Scan a bundle and emit a deterministic scan report.
-
-**Synopsis**
+### `skillvault scan <bundle_dir|bundle.zip>`
 
 ```bash
-skillvault scan <bundle_dir|bundle.zip> [--policy policy.yaml] [--format json|table] [--out file] [--deterministic]
+skillvault scan <bundle> [--format json|table] [--out file] [--deterministic]
 ```
 
-**Notes**
-- `--policy` is optional for `scan`; findings are scanner-derived. If a policy is provided, the scan may include policy-aware context depending on the implementation, but the primary purpose is to emit a `ScanReport`.
-
-**Example (JSON)**
+### `skillvault receipt <bundle_dir|bundle.zip>`
 
 ```bash
-node packages/cli/dist/cli.js scan packages/cli/test/fixtures/benign-skill --format json --deterministic
+skillvault receipt <bundle> --signing-key <ed25519-private.pem> [--key-id id] [--policy policy.yaml] [--out receipt.json] [--deterministic]
 ```
 
-**Example (table)**
+Security behavior:
+- Receipt policy is forced to `FAIL` if scan includes any `error` severity finding.
+
+### `skillvault verify <bundle_dir|bundle.zip>`
 
 ```bash
-node packages/cli/dist/cli.js scan packages/cli/test/fixtures/benign-skill --format table
+skillvault verify <bundle> --receipt receipt.json (--pubkey <file> | --keyring <dir>) [--policy policy.yaml] [--offline] [--format json|table] [--deterministic]
 ```
 
----
+Hard-fail conditions:
+- Signature invalid
+- Signature key not found
+- Any file/bundle hash mismatch
+- Constraint/policy hard failures
 
-## `skillvault receipt`
-
-Generate a portable receipt bound to a specific bundle hash + file list.
-
-**Synopsis**
+### `skillvault gate (--receipt receipt.json | <bundle_dir|bundle.zip>)`
 
 ```bash
-skillvault receipt <bundle_dir|bundle.zip> [--policy policy.yaml] --signing-key ed25519-private.pem [--key-id id] [--out receipt.json] [--deterministic]
+skillvault gate (--receipt receipt.json | <bundle>) --policy policy.yaml [--pubkey <file> | --keyring <dir>] [--bundle <bundle>] [--format json|table] [--deterministic]
 ```
 
-**Signing key format**
-- `--signing-key` expects an Ed25519 private key in PEM PKCS#8 format (`-----BEGIN PRIVATE KEY-----`).
+`gate --receipt` requirements:
+- exactly one of `--pubkey` or `--keyring` is required
+- receipt signature must verify before policy gating
+- optional `--bundle` performs full integrity verification before gate decision
 
-**Example**
+### `skillvault diff --a <bundle|receipt> --b <bundle|receipt>`
 
 ```bash
-node packages/cli/dist/cli.js receipt packages/cli/test/fixtures/benign-skill \
-  --policy packages/cli/test/fixtures/policy-pass.yaml \
-  --signing-key packages/cli/test/fixtures/keys/ed25519-private.pem \
-  --key-id fixture-ed25519 \
-  --out /tmp/skillvault-receipt.json \
-  --deterministic
+skillvault diff --a <input> --b <input> [--format json|table] [--deterministic]
 ```
 
----
-
-## `skillvault verify`
-
-Verify that a bundle matches a receipt, and that policy/constraints/approvals (if required) are satisfied.
-
-**Synopsis**
-
-```bash
-skillvault verify <bundle_dir|bundle.zip> --receipt receipt.json [--policy policy.yaml] (--pubkey <ed25519_public_key> | --keyring <dir>) [--offline] [--format json|table] [--deterministic]
-```
-
-**Key source (required)**
-- Provide exactly one: `--pubkey <file>` or `--keyring <dir>`.
-
-**Hard-fail conditions (required in v0.1)**
-- Any **signature validation failure** (invalid signature, payload hash mismatch, unknown key)
-- Any **content hash mismatch** (missing/extra file, per-file sha256 mismatch, bundle sha256 mismatch)
-- Any **constraint violation** under the applied policy
-- Any **required approval missing** (approval system is a placeholder in v0.1, but the policy decision must be deterministic)
-
-**Example**
-
-```bash
-node packages/cli/dist/cli.js verify packages/cli/test/fixtures/benign-skill \
-  --receipt /tmp/skillvault-receipt.json \
-  --policy packages/cli/test/fixtures/policy-pass.yaml \
-  --offline \
-  --format json \
-  --deterministic
-```
-
----
-
-## `skillvault gate`
-
-Apply a policy gate to either:
-- an existing receipt (`--receipt`), or
-- a bundle input (scan + gate)
-
-**Synopsis**
-
-```bash
-skillvault gate (--receipt receipt.json | <bundle_dir|bundle.zip>) --policy policy.yaml [--format json|table] [--deterministic]
-```
-
-**Example (receipt-only gating)**
-
-```bash
-node packages/cli/dist/cli.js gate --receipt /tmp/skillvault-receipt.json \
-  --policy packages/cli/test/fixtures/policy-allow-all.yaml \
-  --format table
-```
-
----
-
-## `skillvault diff`
-
-Compare two bundle/receipt inputs and emit security-relevant deltas.
-
-**Synopsis**
-
-```bash
-skillvault diff --a <bundle|receipt> --b <bundle|receipt> [--format json|table] [--deterministic]
-```
-
-**Examples**
-
-```bash
-# bundle vs bundle
-node packages/cli/dist/cli.js diff --a ./my-skill-v1 --b ./my-skill-v2 --format json --deterministic
-
-# receipt vs bundle
-node packages/cli/dist/cli.js diff --a ./receipt-v1.json --b ./my-skill-v2 --format table
-```
-
----
-
-## `skillvault export`
-
-Export a directory bundle to a strict zip that enforces v0.1 hygiene constraints.
-
-**Synopsis**
+### `skillvault export <bundle_dir>`
 
 ```bash
 skillvault export <bundle_dir> --out bundle.zip [--policy policy.yaml] [--profile strict_v0]
 ```
 
-**Notes**
-- `export` only accepts a directory (not a zip input) in v0.1.
-- `--profile` selects a named policy profile from `policy.yaml` (SkillVault profiles, not OpenAI profiles).
+---
 
-**Example**
+## Manager commands
+
+### Initialize manager vault
 
 ```bash
-node packages/cli/dist/cli.js export packages/cli/test/fixtures/benign-skill \
-  --out /tmp/benign-skill.zip \
-  --policy ./policy.yaml \
-  --profile strict_v0
+skillvault manager init [--root <path>]
+```
+
+### Adapter operations
+
+```bash
+skillvault manager adapters list [--root <path>] [--format json|table]
+skillvault manager adapters sync-snapshot [--root <path>]
+```
+
+### Import and inventory
+
+```bash
+skillvault manager import <bundle_dir|bundle.zip> [--source <path|url>] [--policy <policy.yaml>] [--root <path>]
+skillvault manager inventory [--risk PASS|WARN|FAIL] [--adapter <id>] [--search <q>] [--root <path>] [--format json|table]
+```
+
+### Deploy and undeploy
+
+```bash
+skillvault manager deploy <skill_id> --adapter <id|*> [--scope project|global] [--mode copy|symlink] [--root <path>]
+skillvault manager undeploy <skill_id> --adapter <id|*> [--scope project|global] [--root <path>]
+```
+
+### Audit and discover
+
+```bash
+skillvault manager audit [--stale-days <n>] [--format json|table] [--root <path>]
+skillvault manager discover --query "<text>" [--root <path>]
+```
+
+### Serve local API
+
+```bash
+skillvault manager serve [--port 4646] [--root <path>]
+```
+
+---
+
+## Examples
+
+```bash
+# Import and deploy to Codex + Windsurf + OpenClaw + Cursor + Claude Code
+skillvault manager import ./my-skill
+skillvault manager deploy my-skill --adapter '*' --scope project --mode symlink
+
+# Gate a receipt with required trust verification
+skillvault gate --receipt ./receipt.json --policy ./policy.yaml --pubkey ./ed25519-public.pem
+
+# Gate a receipt and also verify full bundle integrity
+skillvault gate --receipt ./receipt.json --bundle ./my-skill --policy ./policy.yaml --pubkey ./ed25519-public.pem
 ```

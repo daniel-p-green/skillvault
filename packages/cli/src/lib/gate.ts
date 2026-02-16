@@ -185,28 +185,34 @@ function gateFromInputs(opts: {
   };
 }
 
+export function failGateFromFindings(findings: Finding[], deterministic: boolean): { report: GateReport; exitCode: number } {
+  const risk_score: RiskScore = {
+    base_risk: 100,
+    change_risk: 0,
+    policy_delta: 0,
+    total: 100
+  };
+  const policy = decidePolicy({ risk_score, gates: undefined });
+  return {
+    report: {
+      contract_version: CONTRACT_VERSION,
+      created_at: nowIso(deterministic),
+      verdict: 'FAIL',
+      risk_score,
+      findings,
+      policy
+    },
+    exitCode: 1
+  };
+}
+
 export async function gateFromReceipt(receiptPath: string, opts: { policyPath: string; deterministic: boolean }): Promise<{ report: GateReport; exitCode: number }> {
   const findings: Finding[] = [];
 
   const { receipt, errorFinding } = await readReceipt(receiptPath);
   if (!receipt) {
     if (errorFinding) findings.push(errorFinding);
-
-    const risk_score: RiskScore = { base_risk: 0, change_risk: 0, policy_delta: 0, total: 100 };
-
-    const policy = decidePolicy({ risk_score, gates: undefined });
-
-    return {
-      report: {
-        contract_version: CONTRACT_VERSION,
-        created_at: nowIso(opts.deterministic),
-        verdict: 'FAIL',
-        risk_score,
-        findings,
-        policy
-      },
-      exitCode: 1
-    };
+    return failGateFromFindings(findings, opts.deterministic);
   }
 
   const loadedPolicy = await loadPolicyV1(opts.policyPath);
