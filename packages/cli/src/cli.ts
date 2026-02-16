@@ -790,6 +790,252 @@ export async function main(argv = process.argv): Promise<number> {
             }
           )
           .command(
+            'telemetry',
+            'Inspect and flush telemetry outbox events',
+            (telemetryCmd) =>
+              telemetryCmd
+                .command(
+                  'status',
+                  'Show telemetry outbox status and recent events',
+                  (cmd) =>
+                    cmd
+                      .option('limit', {
+                        type: 'number',
+                        default: 25,
+                        describe: 'Number of recent events to return'
+                      })
+                      .option('root', {
+                        type: 'string',
+                        describe: 'Workspace root (defaults to cwd)'
+                      }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const status = await withManager(root, async (manager) => manager.telemetryStatus(Number(args.limit ?? 25)));
+                    if (args.format === 'table') {
+                      const lines = [
+                        `total: ${status.totals.total}`,
+                        `pending: ${status.totals.pending}`,
+                        `retry: ${status.totals.retry}`,
+                        `sent: ${status.totals.sent}`,
+                        `dead_letter: ${status.totals.dead_letter}`,
+                        `skipped: ${status.totals.skipped}`
+                      ];
+                      await writeOutput(args, `${lines.join('\n')}\n`);
+                      return;
+                    }
+                    await writeOutput(args, `${JSON.stringify(status, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'flush',
+                  'Flush outbox events to jsonl or weave target',
+                  (cmd) =>
+                    cmd
+                      .option('target', {
+                        choices: ['jsonl', 'weave'] as const,
+                        default: 'jsonl',
+                        describe: 'Flush target transport'
+                      })
+                      .option('max-events', {
+                        type: 'number',
+                        default: 100,
+                        describe: 'Maximum outbox events to flush'
+                      })
+                      .option('root', {
+                        type: 'string',
+                        describe: 'Workspace root (defaults to cwd)'
+                      }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const report = await withManager(root, async (manager) =>
+                      manager.flushTelemetry({
+                        target: args.target as 'jsonl' | 'weave',
+                        maxEvents: Number(args.maxEvents ?? 100)
+                      })
+                    );
+                    await writeOutput(args, `${JSON.stringify(report, null, 2)}\n`);
+                  }
+                )
+                .demandCommand(1, 'Provide a telemetry subcommand'),
+            async () => {}
+          )
+          .command(
+            'eval',
+            'Seed datasets and run deterministic manager evaluations',
+            (evalCmd) =>
+              evalCmd
+                .command(
+                  'datasets',
+                  'Manage eval datasets',
+                  (datasetsCmd) =>
+                    datasetsCmd
+                      .command(
+                        'seed',
+                        'Seed default deterministic eval dataset',
+                        (cmd) =>
+                          cmd
+                            .option('dataset', {
+                              type: 'string',
+                              describe: 'Dataset id (default: default-manager-regression)'
+                            })
+                            .option('root', {
+                              type: 'string',
+                              describe: 'Workspace root (defaults to cwd)'
+                            }),
+                        async (args) => {
+                          const root = requireManagerRoot(args);
+                          const result = await withManager(root, async (manager) => manager.seedEvalDataset(
+                            args.dataset ? String(args.dataset) : undefined
+                          ));
+                          await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+                        }
+                      )
+                      .command(
+                        'list',
+                        'List eval datasets',
+                        (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                        async (args) => {
+                          const root = requireManagerRoot(args);
+                          const datasets = await withManager(root, async (manager) => manager.listEvalDatasets());
+                          await writeOutput(args, `${JSON.stringify({ datasets }, null, 2)}\n`);
+                        }
+                      )
+                      .demandCommand(1, 'Provide a datasets subcommand'),
+                  async () => {}
+                )
+                .command(
+                  'run',
+                  'Run an eval dataset and optionally compare against a baseline run',
+                  (cmd) =>
+                    cmd
+                      .option('dataset', {
+                        type: 'string',
+                        demandOption: true,
+                        describe: 'Dataset id'
+                      })
+                      .option('baseline', {
+                        type: 'string',
+                        describe: 'Baseline run id for regression comparison'
+                      })
+                      .option('fail-on-regression', {
+                        type: 'boolean',
+                        default: false,
+                        describe: 'Return non-zero exit code when score regresses against baseline'
+                      })
+                      .option('root', {
+                        type: 'string',
+                        describe: 'Workspace root (defaults to cwd)'
+                      }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const report = await withManager(root, async (manager) =>
+                      manager.runEval({
+                        datasetId: String(args.dataset),
+                        baselineRunId: args.baseline ? String(args.baseline) : undefined,
+                        failOnRegression: Boolean(args.failOnRegression)
+                      })
+                    );
+                    await writeOutput(args, `${JSON.stringify(report, null, 2)}\n`);
+                    if (report.regressionFailed) {
+                      process.exitCode = 1;
+                    }
+                  }
+                )
+                .command(
+                  'compare',
+                  'Compare an eval run to its baseline',
+                  (cmd) =>
+                    cmd
+                      .option('run', {
+                        type: 'string',
+                        demandOption: true,
+                        describe: 'Eval run id'
+                      })
+                      .option('root', {
+                        type: 'string',
+                        describe: 'Workspace root (defaults to cwd)'
+                      }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const comparison = await withManager(root, async (manager) => manager.compareEvalRun(String(args.run)));
+                    await writeOutput(args, `${JSON.stringify(comparison, null, 2)}\n`);
+                  }
+                )
+                .demandCommand(1, 'Provide an eval subcommand'),
+            async () => {}
+          )
+          .command(
+            'auth',
+            'Manage local RBAC bootstrap and API tokens',
+            (authCmd) =>
+              authCmd
+                .command(
+                  'bootstrap',
+                  'Create default roles and emit a local admin token',
+                  (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const result = await withManager(root, async (manager) => manager.authBootstrap());
+                    await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'token',
+                  'Create role-scoped API token',
+                  (tokenCmd) =>
+                    tokenCmd
+                      .command(
+                        'create',
+                        'Create an API token for a principal',
+                        (cmd) =>
+                          cmd
+                            .option('principal', {
+                              type: 'string',
+                              demandOption: true,
+                              describe: 'Principal id'
+                            })
+                            .option('role', {
+                              choices: ['admin', 'operator', 'viewer'] as const,
+                              demandOption: true,
+                              describe: 'Role name'
+                            })
+                            .option('label', {
+                              type: 'string',
+                              describe: 'Optional token label'
+                            })
+                            .option('expires-at', {
+                              type: 'string',
+                              describe: 'Optional ISO timestamp when token expires'
+                            })
+                            .option('root', {
+                              type: 'string',
+                              describe: 'Workspace root (defaults to cwd)'
+                            }),
+                        async (args) => {
+                          const root = requireManagerRoot(args);
+                          const created = await withManager(root, async (manager) =>
+                            manager.createAuthToken({
+                              principalId: String(args.principal),
+                              roleName: args.role as 'admin' | 'operator' | 'viewer',
+                              label: args.label ? String(args.label) : undefined,
+                              expiresAt: args.expiresAt ? String(args.expiresAt) : undefined
+                            })
+                          );
+                          await writeOutput(args, `${JSON.stringify({
+                            principalId: created.record.principalId,
+                            roleName: created.record.roleName,
+                            label: created.record.label,
+                            token: created.token
+                          }, null, 2)}\n`);
+                        }
+                      )
+                      .demandCommand(1, 'Provide a token subcommand'),
+                  async () => {}
+                )
+                .demandCommand(1, 'Provide an auth subcommand'),
+            async () => {}
+          )
+          .command(
             'discover',
             'Search skills.sh via npx skills find',
             (cmd) =>

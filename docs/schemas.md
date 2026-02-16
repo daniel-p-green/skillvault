@@ -1,8 +1,9 @@
-# SkillVault schemas (v0.2)
+# SkillVault schemas (v0.3)
 
 This document covers:
-1. v0.1 trust JSON contracts (still active in v0.2)
-2. manager domain entities and storage schema
+1. v0.1 trust JSON contracts (still active in v0.3)
+2. manager v0.3 domain entities
+3. manager SQLite schema migrations through v0.3
 
 ## Trust contracts (v0.1, still active)
 
@@ -37,15 +38,7 @@ All trust outputs include:
 
 When `scan.findings` contains any finding with `severity: "error"`:
 - `receipt.policy.verdict` is forced to `FAIL`
-- `receipt.policy.findings` includes:
-
-```json
-{
-  "code": "POLICY_SCAN_ERROR_FINDING",
-  "severity": "error",
-  "message": "Receipt policy is forced to FAIL because scan findings contain error severity entries."
-}
-```
+- `receipt.policy.findings` includes `POLICY_SCAN_ERROR_FINDING`
 
 ## Gate receipt hardening rule
 
@@ -56,69 +49,48 @@ For `gate --receipt`:
   - `SIGNATURE_KEY_NOT_FOUND`
   - `SIGNATURE_INVALID`
 
-## Manager domain entities
+## Manager domain entities (v0.3)
 
 Types live in `packages/manager-core/src/adapters/types.ts`.
 
-### `AdapterSpec`
-- `id`
-- `displayName`
-- `projectPath`
-- `globalPath`
-- `detectionPaths[]`
-- `manifestFilenames[]`
-- `supportsSymlink`
-- `supportsGlobal`
-- `notes?`
+### Core manager entities
 
-### `SkillRecord`
-- `id`
-- `name`
-- `description`
-- `sourceType`
-- `sourceLocator`
-- `createdAt`
-- `updatedAt`
+- `AdapterSpec`
+- `SkillRecord`
+- `SkillVersionRecord`
+- `DeploymentRecord`
+- `AuditSummary`
+- `DiscoveryResult`
 
-### `SkillVersionRecord`
-- `id`
-- `skillId`
-- `versionHash`
-- `manifestPath`
-- `bundleSha256`
-- `createdAt`
-- `isCurrent`
+### Telemetry entities
 
-### `DeploymentRecord`
-- `id`
-- `skillVersionId`
-- `adapterId`
-- `installScope`
-- `installedPath`
-- `installMode`
-- `status`
-- `deployedAt`
-- `driftStatus`
+- `TelemetryEvent`
+- `OutboxRecord`
 
-### `AuditSummary`
-- `totals.skills`
-- `totals.deployments`
-- `totals.staleSkills`
-- `totals.driftedDeployments`
-- `staleSkills[]`
-- `driftedDeployments[]`
+### Eval entities
 
-### `DiscoveryResult`
-- `installRef`
-- `url`
-- `installs?`
-- `title?`
+- `EvalDataset`
+- `EvalCase`
+- `EvalRun`
+- `EvalResult`
+
+### RBAC entities
+
+- `Principal`
+- `Role`
+- `Permission`
+- `ApiTokenRecord`
 
 ## SQLite schema (`.skillvault/skillvault.db`)
 
-Migration: `packages/manager-core/src/storage/migrations/001_initial.sql`
+Migrations:
+- `001_initial.sql`
+- `002_telemetry.sql`
+- `003_evals.sql`
+- `004_rbac.sql`
 
-Tables:
+### Core tables
+
 - `skills`
 - `skill_versions`
 - `scan_runs`
@@ -127,4 +99,29 @@ Tables:
 - `deployments`
 - `audit_events`
 
-These tables support inventory, deploy/undeploy history, receipt binding, adapter snapshot, and drift/staleness audit.
+### Telemetry tables
+
+- `telemetry_events`
+
+`telemetry_events` status lifecycle:
+- `pending`
+- `retry`
+- `sent`
+- `dead_letter`
+- `skipped`
+
+### Eval tables
+
+- `eval_datasets`
+- `eval_cases`
+- `eval_runs`
+- `eval_results`
+
+### RBAC tables
+
+- `principals`
+- `roles`
+- `principal_roles`
+- `api_tokens`
+
+`api_tokens` stores only `token_hash` (sha256), never raw token values.

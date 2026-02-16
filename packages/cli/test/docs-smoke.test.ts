@@ -49,6 +49,9 @@ describe('docs smoke', () => {
       'skillvault manager inventory',
       'skillvault manager deploy',
       'skillvault manager audit',
+      'skillvault manager telemetry status',
+      'skillvault manager eval run',
+      'skillvault manager auth bootstrap',
       'skillvault manager serve'
     ]) {
       expect(readme).toContain(managerCmd);
@@ -56,9 +59,10 @@ describe('docs smoke', () => {
     }
   });
 
-  it('docs include required v0.2 product headings and security details', () => {
+  it('docs include required v0.3 product headings and security details', () => {
     const schemas = readNonEmpty(path.join(repoRoot, 'docs', 'schemas.md'));
     const cli = readNonEmpty(path.join(repoRoot, 'docs', 'cli.md'));
+    const prd = readNonEmpty(path.join(repoRoot, 'docs', 'PRD.md'));
     const jtbd = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'JTBD.md'));
     const useCases = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'use-cases.md'));
     const stories = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'user-stories.md'));
@@ -67,11 +71,23 @@ describe('docs smoke', () => {
 
     expect(cli).toContain('--pubkey');
     expect(cli).toContain('--keyring');
-    expect(cli).toContain('gate --receipt');
+    expect(cli).toContain('--receipt receipt.json');
+    expect(cli).toContain('manager telemetry status');
+    expect(cli).toContain('manager eval run');
+    expect(cli).toContain('manager auth bootstrap');
 
     expect(schemas).toContain('POLICY_SCAN_ERROR_FINDING');
     expect(schemas).toContain('AdapterSpec');
-    expect(schemas).toContain('SQLite schema');
+    expect(schemas).toContain('TelemetryEvent');
+    expect(schemas).toContain('EvalDataset');
+    expect(schemas).toContain('ApiTokenRecord');
+    expect(schemas).toContain('002_telemetry.sql');
+    expect(schemas).toContain('003_evals.sql');
+    expect(schemas).toContain('004_rbac.sql');
+
+    expect(prd).toContain('v0.3');
+    expect(prd).toContain('telemetry outbox');
+    expect(prd).toContain('RBAC');
 
     expect(jtbd).toContain('# JTBD');
     expect(jtbd).toContain('## Personas');

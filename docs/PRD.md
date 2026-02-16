@@ -1,87 +1,105 @@
-# SkillVault PRD (v0.2)
+# SkillVault PRD (v0.3)
 
 ## Product Positioning
 
-SkillVault v0.2 is a local-first manager for trusted skill operations across multiple AI coding apps.  
-It extends v0.1 trust primitives into an operational platform with inventory, deployments, audit, API, and GUI.
+SkillVault v0.3 is a local-first manager for trusted skill operations across multiple AI coding apps.
+It extends v0.2 with telemetry outbox, deterministic eval loops, and additive RBAC preparation.
 
 ## Problem Statement
 
-Teams increasingly run the same skills in multiple agent ecosystems (Codex, Windsurf, OpenClaw, Cursor, Claude Code, and others), but today they lack:
-- a unified local inventory
-- cross-app deployment control
-- durable trust and audit history
-- drift and stale-state visibility
+Teams running shared skills across multiple agent ecosystems still struggle with:
+- inconsistent trust verification at install time
+- no durable quality regression loop for manager operations
+- weak access boundaries for local API surfaces
+- missing telemetry path from local operations to cloud observability
 
 ## Goals
 
-1. Provide a canonical local vault for skill versions and receipts.
-2. Support multi-app deployment with adapter abstraction and parity snapshot coverage.
-3. Preserve deterministic trust workflows (`scan`, `receipt`, `verify`, `gate`, `diff`, `export`).
-4. Deliver manager API + GUI for operations workflows.
-5. Enforce security hardening in receipt gating and receipt policy generation.
+1. Preserve deterministic trust workflows (`scan`, `receipt`, `verify`, `gate`, `diff`, `export`).
+2. Keep multi-adapter manager operations local-first and backward-compatible.
+3. Add telemetry outbox and controlled cloud-ready flush (`jsonl` and optional Weave).
+4. Add deterministic eval dataset/run/compare workflows for regression detection.
+5. Add additive RBAC/token preparation with opt-in API enforcement.
+6. Extend GUI with telemetry, evals, and access control pages.
 
 ## Non-Goals
 
-- Hosted SaaS control plane (v0.2 remains local-first).
-- Remote bundle fetching as a trust default.
-- Marketplace curation and ranking.
-- Enterprise RBAC and centralized policy distribution.
+- Hosted sync control plane in v0.3.
+- Mandatory cloud telemetry for core operations.
+- Breaking changes to v0.1/v0.2 command contracts.
+- Enterprise SSO or centralized IAM.
 
 ## Personas
 
-- **Security-minded solo dev**: wants deterministic trust checks before installing skills.
-- **Power user with multiple apps**: wants one place to deploy and audit skills across adapters.
-- **Team lead**: wants reproducible local workflow and testable guardrails for CI.
+- **Security-minded solo dev**: needs deterministic trust checks and local safety defaults.
+- **Multi-app power user**: needs one place to deploy/audit skills across adapter targets.
+- **Ops owner**: needs telemetry/evals to catch drift and regression early.
+- **Team lead**: needs optional role-based API guardrails without local workflow friction.
 
 ## Core Functional Requirements
 
-### Trust Layer (Backwards compatible)
+### Trust Layer (backward compatible)
 
 - `scan`, `receipt`, `verify`, `gate`, `diff`, `export` remain available.
-- `gate --receipt` requires trust key input:
-  - exactly one of `--pubkey` or `--keyring`
-- `gate --receipt` must verify signature before policy gating.
-- optional `gate --receipt --bundle <path>` verifies full bundle hash/integrity before policy gating.
-- receipt policy is forced to `FAIL` when scan findings contain any `error` severity finding.
+- `gate --receipt` requires exactly one of `--pubkey` or `--keyring`.
+- receipt policy is forced to `FAIL` when scan includes any `error` severity finding.
 
 ### Manager Layer
 
-- Manager storage root: `.skillvault/`
-- SQLite metadata + file vault:
-  - `skillvault.db`
-  - `vault/<skill_id>/<version_hash>/...`
-  - `receipts/<receipt_id>.json`
-- Adapter registry with built-ins and override support.
-- Import, inventory, deploy, undeploy, audit, and discovery workflows.
-- Drift detection on missing paths, symlink divergence, and copy-mode content mutation.
+- Existing import/inventory/deploy/undeploy/audit/discover workflows remain intact.
+- Adapter snapshot and OpenClaw fallback support remain intact.
+
+### Telemetry Layer
+
+- Manager workflows emit telemetry events into local outbox storage.
+- `manager telemetry status` reports queue state.
+- `manager telemetry flush --target jsonl|weave` supports:
+  - success path
+  - retry path
+  - dead-letter path after repeated failures
+- Weave export requires explicit endpoint configuration.
+
+### Eval Layer
+
+- Seed deterministic dataset (`manager eval datasets seed`).
+- Run deterministic checks (`manager eval run`).
+- Compare run against baseline (`manager eval compare`).
+- Optional non-zero exit on regression.
+
+### RBAC Layer (additive)
+
+- Roles: `viewer`, `operator`, `admin`.
+- API tokens are generated locally and stored hashed.
+- `SKILLVAULT_AUTH_MODE=off` keeps backward compatibility.
+- `SKILLVAULT_AUTH_MODE=required` enforces route permissions.
 
 ### API Layer
 
-- Local Fastify API for manager workflows:
-  - `/health`, `/adapters`, `/skills`, `/deployments`, `/audit/summary`, `/discover`, etc.
+- Existing routes remain.
+- New routes include `/telemetry/status`, `/telemetry/flush`, `/evals/*`, `/me`, `/rbac/roles`, `/auth/tokens`.
 
 ### GUI Layer
 
-- React + TypeScript + Vite manager web app.
-- Pages:
-  - Dashboard
-  - Skill Detail
-  - Adapters
-  - Deploy Flow
-  - Audit
-  - Discover
+- Existing pages remain.
+- New pages include:
+  - Telemetry
+  - Evals
+  - Access
 
 ## Success Metrics
 
-- Import -> deploy -> audit workflow completes locally without manual file editing.
-- Multi-adapter deploy succeeds for milestone adapters (`codex`, `windsurf`, `openclaw`, `cursor`, `claude-code`).
-- Trust-gate bypass via unsigned/invalid receipt is blocked deterministically.
-- Documentation covers JTBD, use cases, stories, and executable test cases.
+- Core manager workflow still passes (`init -> import -> deploy -> audit`).
+- Telemetry can flush locally (`jsonl`) and handle retry/dead-letter paths deterministically.
+- Eval workflows can detect and report run deltas.
+- API auth enforcement works when enabled and remains fully off by default.
+- Workspace build/typecheck/test/golden checks pass.
 
-## Release Acceptance (v0.2)
+## Release Acceptance (v0.3)
 
-1. Workspace build/typecheck/test passes for `cli`, `manager-core`, `manager-api`, and `manager-web`.
-2. Manager commands are callable from CLI under `skillvault manager ...`.
-3. Security hardening tests pass for gate trust enforcement and receipt fail-on-scan-error.
-4. Product docs in `docs/product/` meet required headings and traceability.
+1. Workspace build/typecheck/test passes for all packages.
+2. v0.1/v0.2 trust and manager commands remain compatible.
+3. Telemetry outbox status/flush commands and API routes are functional.
+4. Eval dataset/run/compare commands and API routes are functional.
+5. RBAC bootstrap/token flows are functional; API guardrails enforce in required mode.
+6. GUI pages render and pass test coverage for telemetry/evals/access workflows.
+7. Product docs are updated with JTBD, use-cases, user stories, acceptance, and test mapping for v0.3.

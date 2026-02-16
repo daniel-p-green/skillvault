@@ -8,9 +8,12 @@ import { AdaptersPage } from './pages/AdaptersPage.js';
 import { DeployPage } from './pages/DeployPage.js';
 import { AuditPage } from './pages/AuditPage.js';
 import { DiscoverPage } from './pages/DiscoverPage.js';
+import { TelemetryPage } from './pages/TelemetryPage.js';
+import { EvalsPage } from './pages/EvalsPage.js';
+import { AccessPage } from './pages/AccessPage.js';
 import { apiGet } from './services/http.js';
 
-type PageKey = 'dashboard' | 'skill' | 'adapters' | 'deploy' | 'audit' | 'discover';
+type PageKey = 'dashboard' | 'skill' | 'adapters' | 'deploy' | 'audit' | 'discover' | 'telemetry' | 'evals' | 'access';
 
 interface HealthResponse {
   ok: boolean;
@@ -22,7 +25,10 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; description: string }> = [
   { key: 'adapters', label: 'Adapters', description: 'Targets and path health' },
   { key: 'deploy', label: 'Deploy Flow', description: 'Push versions by scope and mode' },
   { key: 'audit', label: 'Audit', description: 'Stale scans and drift traces' },
-  { key: 'discover', label: 'Discover', description: 'skills.sh search and import' }
+  { key: 'discover', label: 'Discover', description: 'skills.sh search and import' },
+  { key: 'telemetry', label: 'Telemetry', description: 'Outbox health and export state' },
+  { key: 'evals', label: 'Evals', description: 'Regression runs and score deltas' },
+  { key: 'access', label: 'Access', description: 'RBAC mode, roles, and token flows' }
 ];
 
 function pageForKey(key: PageKey) {
@@ -39,6 +45,12 @@ function pageForKey(key: PageKey) {
       return <AuditPage />;
     case 'discover':
       return <DiscoverPage />;
+    case 'telemetry':
+      return <TelemetryPage />;
+    case 'evals':
+      return <EvalsPage />;
+    case 'access':
+      return <AccessPage />;
     default:
       return <DashboardPage />;
   }

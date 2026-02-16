@@ -73,3 +73,96 @@ export interface DiscoveryResult {
   installs?: number;
   title?: string;
 }
+
+export type TelemetryOutboxStatus = 'pending' | 'retry' | 'sent' | 'dead_letter' | 'skipped';
+
+export interface TelemetryEvent {
+  id: string;
+  eventType: string;
+  source: string;
+  subjectType: string;
+  subjectId: string | null;
+  details: Record<string, unknown>;
+  outboxStatus: TelemetryOutboxStatus;
+  exportTarget: string | null;
+  attemptCount: number;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sentAt: string | null;
+}
+
+export interface OutboxRecord extends TelemetryEvent {}
+
+export interface EvalDataset {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EvalCase {
+  id: string;
+  datasetId: string;
+  caseKey: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  weight: number;
+  createdAt: string;
+}
+
+export interface EvalRun {
+  id: string;
+  datasetId: string;
+  baselineRunId: string | null;
+  status: 'running' | 'completed' | 'failed';
+  score: number;
+  summary: Record<string, unknown>;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface EvalResult {
+  id: string;
+  runId: string;
+  caseId: string;
+  status: 'pass' | 'fail';
+  score: number;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface Permission {
+  id: string;
+  label: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Principal {
+  id: string;
+  name: string;
+  type: 'user' | 'service';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiTokenRecord {
+  id: string;
+  principalId: string;
+  label: string;
+  roleName: string;
+  tokenHash: string;
+  isActive: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+}

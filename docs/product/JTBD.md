@@ -2,37 +2,40 @@
 
 ## Core Job
 
-When I run skills across multiple AI apps, I want one local control plane to verify trust, deploy consistently, and detect drift so that I can move fast without losing security posture.
+When I run skills across multiple AI apps, I want one local control plane to verify trust, manage deployment state, monitor quality regressions, and control API access so that I can move fast without sacrificing security.
 
 ## Personas
 
 ### Solo developer
 
-- Job: Install and update skills quickly with deterministic trust checks.
-- Pain today: Manual copy/paste installs and inconsistent verification.
+- Job: install and iterate skills quickly with deterministic trust checks.
+- Pain today: manual installs, inconsistent trust verification, and no easy rollback confidence.
 - Success metrics:
-  - Can import and deploy a skill in under 2 minutes.
-  - Can prove receipt trust before enabling a skill.
+  - import + deploy in under 2 minutes
+  - signature-verified receipt gating every time
+  - clear audit report on drift/staleness
 
 ### Multi-app power user
 
-- Job: Keep the same skill set in Codex, Windsurf, OpenClaw, Cursor, and Claude Code.
-- Pain today: Different folder conventions and no central inventory.
+- Job: keep skills aligned across Codex, Windsurf, OpenClaw, Cursor, and Claude Code.
+- Pain today: per-tool folder differences and no central operation view.
 - Success metrics:
-  - One command deploys to required adapters.
-  - Adapter drift is surfaced in one audit view.
+  - one command fan-out deploy to enabled adapters
+  - dashboard shows deployment and drift posture
+  - telemetry outbox can be flushed for external observability
 
-### Team lead / security owner
+### Ops / security owner
 
-- Job: Enforce deterministic trust guardrails without blocking delivery.
-- Pain today: No repeatable local process for trust receipts and policy gates.
+- Job: enforce safety and detect regressions before broad rollout.
+- Pain today: no deterministic local eval loop and weak API access boundaries.
 - Success metrics:
-  - `gate --receipt` cannot pass without signature verification.
-  - Receipt generation forces `FAIL` on scan errors.
-  - CI test suite passes for trust and manager flows.
+  - eval runs produce baseline/candidate deltas
+  - regression gate can fail CI or scripted workflows
+  - API auth mode can be enabled with role-scoped tokens
 
 ## Job Success Outcomes
 
-- Confidence: operators can answer "what is installed where" at any time.
-- Control: deployments are scoped, auditable, and reversible.
-- Safety: untrusted or tampered receipts fail deterministically.
+- **Confidence**: operators can answer what is installed, trusted, and drifting.
+- **Control**: deployments are auditable, reversible, and policy-gated.
+- **Quality**: telemetry + eval loops expose regression and operational risk.
+- **Security**: trust model and optional RBAC enforcement are deterministic and testable.

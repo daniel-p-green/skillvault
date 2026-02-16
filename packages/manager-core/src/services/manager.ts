@@ -9,20 +9,55 @@ import AdmZip from 'adm-zip';
 import { BUILTIN_ADAPTERS } from '../adapters/builtin.js';
 import type {
   AdapterSpec,
+  ApiTokenRecord,
   AuditSummary,
   DeploymentRecord,
   DeploymentResult,
   DiscoveryResult,
+  EvalCase,
+  EvalDataset,
+  EvalResult,
+  EvalRun,
   InstallMode,
   InstallScope,
+  Role,
   SkillVersionRecord,
   TrustVerdict
 } from '../adapters/types.js';
 import { SkillVaultDb } from '../storage/db.js';
 import { comparePathBytes, computeBundleSha256, sha256Hex } from '../utils/hash.js';
+import { TelemetryService } from './telemetryService.js';
+import { WeaveExporter, weaveConfigFromEnv } from './weaveExporter.js';
+import { AuthService, type AuthSession } from './authService.js';
 
 const execFileAsync = promisify(execFile);
 const MANIFEST_FILENAMES = ['SKILL.md', 'skill.md'];
+const DEFAULT_EVAL_DATASET_ID = 'default-manager-regression';
+const DEFAULT_EVAL_CASES: Array<{
+  key: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  weight: number;
+}> = [
+  {
+    key: 'inventory_non_negative',
+    input: { metric: 'skills.count' },
+    expected: { min: 0 },
+    weight: 1
+  },
+  {
+    key: 'adapters_available',
+    input: { metric: 'adapters.count' },
+    expected: { min: 1 },
+    weight: 1
+  },
+  {
+    key: 'telemetry_accessible',
+    input: { metric: 'telemetry.total' },
+    expected: { min: 0 },
+    weight: 1
+  }
+];
 
 interface BundleFile {
   path: string;
@@ -87,6 +122,23 @@ export interface SyncDiscoveryRecord {
   skillId: string;
 }
 
+export interface EvalSeedResult {
+  datasetId: string;
+  caseCount: number;
+}
+
+export interface EvalRunReport {
+  run: EvalRun;
+  results: EvalResult[];
+  comparison?: {
+    baselineRunId: string;
+    baselineScore: number;
+    delta: number;
+    regressed: boolean;
+  };
+  regressionFailed: boolean;
+}
+
 export class SkillVaultManager {
   readonly rootDir: string;
   readonly skillVaultDir: string;
@@ -94,8 +146,11 @@ export class SkillVaultManager {
   readonly vaultDir: string;
   readonly receiptsDir: string;
   readonly exportDir: string;
+  readonly telemetryOutboxDir: string;
   readonly overridesPath: string;
   readonly db: SkillVaultDb;
+  readonly telemetry: TelemetryService;
+  readonly auth: AuthService;
 
   constructor(rootDir = process.cwd()) {
     this.rootDir = path.resolve(rootDir);
@@ -104,8 +159,11 @@ export class SkillVaultManager {
     this.vaultDir = path.join(this.skillVaultDir, 'vault');
     this.receiptsDir = path.join(this.skillVaultDir, 'receipts');
     this.exportDir = path.join(this.skillVaultDir, 'export');
+    this.telemetryOutboxDir = path.join(this.exportDir, 'telemetry-outbox');
     this.overridesPath = path.join(this.skillVaultDir, 'adapters-overrides.json');
     this.db = new SkillVaultDb(this.dbPath);
+    this.telemetry = new TelemetryService(this.db, this.telemetryOutboxDir, () => this.nowIso());
+    this.auth = new AuthService(this.db, () => this.nowIso());
   }
 
   async init(): Promise<{ root: string; dbPath: string }> {
@@ -158,6 +216,25 @@ export class SkillVaultManager {
       map.set(override.id, { ...override });
     }
     return [...map.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  private async recordTelemetry(input: {
+    eventType: string;
+    subjectType: string;
+    subjectId?: string | null;
+    details?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await this.telemetry.record({
+        eventType: input.eventType,
+        source: 'manager-core',
+        subjectType: input.subjectType,
+        subjectId: input.subjectId ?? null,
+        details: input.details ?? {}
+      });
+    } catch {
+      // Telemetry should never interrupt manager operations.
+    }
   }
 
   async syncAdapterSnapshot(): Promise<{ total: number }> {
@@ -414,6 +491,12 @@ export class SkillVaultManager {
       details_json: JSON.stringify({ source: opts?.sourceLocator ?? bundlePathOrZip }),
       created_at: now
     });
+    await this.recordTelemetry({
+      eventType: 'skill.imported',
+      subjectType: 'skill_version',
+      subjectId: versionId,
+      details: { source: opts?.sourceLocator ?? bundlePathOrZip, skillId, versionHash, riskTotal, verdict }
+    });
 
     return {
       skillId,
@@ -626,6 +709,12 @@ export class SkillVaultManager {
         details_json: JSON.stringify({ adapterId: adapter.id, scope: opts.scope, mode: opts.mode, installedPath }),
         created_at: now
       });
+      await this.recordTelemetry({
+        eventType: 'skill.deployed',
+        subjectType: 'skill_version',
+        subjectId: version.id,
+        details: { adapterId: adapter.id, scope: opts.scope, mode: opts.mode, installedPath, skillId }
+      });
 
       results.push({
         adapterId: adapter.id,
@@ -681,6 +770,12 @@ export class SkillVaultManager {
         details_json: JSON.stringify({ adapterId: adapter.id, scope: opts.scope, removed: Boolean(exists) }),
         created_at: now
       });
+      await this.recordTelemetry({
+        eventType: 'skill.undeployed',
+        subjectType: 'skill',
+        subjectId: skillId,
+        details: { adapterId: adapter.id, scope: opts.scope, removed: Boolean(exists) }
+      });
     }
 
     return results;
@@ -734,7 +829,7 @@ export class SkillVaultManager {
       this.db.updateDeploymentDrift(deployment.id, 'in_sync');
     }
 
-    return {
+    const summary = {
       totals: {
         skills: currentSkills.length,
         deployments: deployments.length,
@@ -744,6 +839,15 @@ export class SkillVaultManager {
       staleSkills,
       driftedDeployments
     };
+    await this.recordTelemetry({
+      eventType: 'vault.audit.completed',
+      subjectType: 'vault',
+      details: {
+        staleDays,
+        totals: summary.totals
+      }
+    });
+    return summary;
   }
 
   async syncInstalledSkills(): Promise<{ discovered: SyncDiscoveryRecord[] }> {
@@ -774,13 +878,30 @@ export class SkillVaultManager {
         }
       }
     }
+    await this.recordTelemetry({
+      eventType: 'skills.sync.completed',
+      subjectType: 'vault',
+      details: { discovered: discovered.length }
+    });
     return { discovered };
   }
 
   async discover(query: string): Promise<DiscoveryResult[]> {
-    const { stdout } = await execFileAsync('npx', ['skills', 'find', query], {
-      maxBuffer: 10 * 1024 * 1024
-    });
+    let stdout = '';
+    try {
+      const execResult = await execFileAsync('npx', ['skills', 'find', query], {
+        maxBuffer: 10 * 1024 * 1024
+      });
+      stdout = execResult.stdout;
+    } catch (error) {
+      await this.recordTelemetry({
+        eventType: 'skills.discover.failed',
+        subjectType: 'discovery_query',
+        subjectId: query,
+        details: { query, message: error instanceof Error ? error.message : String(error) }
+      });
+      throw error;
+    }
     const ansiStripped = stdout.replace(/\u001b\[[0-9;]*m/g, '');
     const lines = ansiStripped.split(/\r?\n/);
     const results: DiscoveryResult[] = [];
@@ -808,6 +929,468 @@ export class SkillVaultManager {
       });
     }
 
+    await this.recordTelemetry({
+      eventType: 'skills.discover.completed',
+      subjectType: 'discovery_query',
+      subjectId: query,
+      details: { query, resultCount: results.length }
+    });
     return results;
+  }
+
+  private evaluateCase(
+    evalCase: EvalCase,
+    metrics: { skillsCount: number; adaptersCount: number; telemetryTotal: number }
+  ): { passed: boolean; details: Record<string, unknown> } {
+    const minValue = typeof evalCase.expected.min === 'number' ? evalCase.expected.min : 0;
+    switch (evalCase.caseKey) {
+      case 'inventory_non_negative': {
+        const actual = metrics.skillsCount;
+        return {
+          passed: actual >= minValue,
+          details: { actual, expected: evalCase.expected, metric: 'skills.count' }
+        };
+      }
+      case 'adapters_available': {
+        const actual = metrics.adaptersCount;
+        return {
+          passed: actual >= minValue,
+          details: { actual, expected: evalCase.expected, metric: 'adapters.count' }
+        };
+      }
+      case 'telemetry_accessible': {
+        const actual = metrics.telemetryTotal;
+        return {
+          passed: Number.isFinite(actual) && actual >= minValue,
+          details: { actual, expected: evalCase.expected, metric: 'telemetry.total' }
+        };
+      }
+      default:
+        return {
+          passed: false,
+          details: {
+            message: `Unknown eval case key: ${evalCase.caseKey}`,
+            expected: evalCase.expected
+          }
+        };
+    }
+  }
+
+  private parseEvalCase(row: {
+    id: string;
+    dataset_id: string;
+    case_key: string;
+    input_json: string;
+    expected_json: string;
+    weight: number;
+    created_at: string;
+  }): EvalCase {
+    return {
+      id: row.id,
+      datasetId: row.dataset_id,
+      caseKey: row.case_key,
+      input: JSON.parse(row.input_json) as Record<string, unknown>,
+      expected: JSON.parse(row.expected_json) as Record<string, unknown>,
+      weight: row.weight,
+      createdAt: row.created_at
+    };
+  }
+
+  private parseEvalRun(row: {
+    id: string;
+    dataset_id: string;
+    baseline_run_id: string | null;
+    status: 'running' | 'completed' | 'failed';
+    score: number;
+    summary_json: string;
+    created_at: string;
+    completed_at: string | null;
+  }): EvalRun {
+    return {
+      id: row.id,
+      datasetId: row.dataset_id,
+      baselineRunId: row.baseline_run_id,
+      status: row.status,
+      score: row.score,
+      summary: JSON.parse(row.summary_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+      completedAt: row.completed_at
+    };
+  }
+
+  private parseEvalResult(row: {
+    id: string;
+    run_id: string;
+    case_id: string;
+    status: 'pass' | 'fail';
+    score: number;
+    details_json: string;
+    created_at: string;
+  }): EvalResult {
+    return {
+      id: row.id,
+      runId: row.run_id,
+      caseId: row.case_id,
+      status: row.status,
+      score: row.score,
+      details: JSON.parse(row.details_json) as Record<string, unknown>,
+      createdAt: row.created_at
+    };
+  }
+
+  async seedEvalDataset(datasetId = DEFAULT_EVAL_DATASET_ID): Promise<EvalSeedResult> {
+    const now = this.nowIso();
+    this.db.upsertEvalDataset({
+      id: datasetId,
+      name: 'Default Manager Regression Dataset',
+      description: 'Deterministic manager health checks for v0.3',
+      created_at: now,
+      updated_at: now
+    });
+
+    for (const evalCase of DEFAULT_EVAL_CASES) {
+      this.db.upsertEvalCase({
+        id: `${datasetId}:${evalCase.key}`,
+        dataset_id: datasetId,
+        case_key: evalCase.key,
+        input_json: JSON.stringify(evalCase.input),
+        expected_json: JSON.stringify(evalCase.expected),
+        weight: evalCase.weight,
+        created_at: now
+      });
+    }
+
+    await this.recordTelemetry({
+      eventType: 'eval.dataset.seeded',
+      subjectType: 'eval_dataset',
+      subjectId: datasetId,
+      details: { caseCount: DEFAULT_EVAL_CASES.length }
+    });
+
+    return { datasetId, caseCount: DEFAULT_EVAL_CASES.length };
+  }
+
+  listEvalDatasets(): EvalDataset[] {
+    return this.db.listEvalDatasets().map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  getEvalRun(runId: string): EvalRunReport | undefined {
+    const runRow = this.db.getEvalRunById(runId);
+    if (!runRow) return undefined;
+    const run = this.parseEvalRun(runRow);
+    const results = this.db.listEvalResults(runId).map((row) => this.parseEvalResult(row));
+    let comparison: EvalRunReport['comparison'];
+    if (run.baselineRunId) {
+      const baseline = this.db.getEvalRunById(run.baselineRunId);
+      if (baseline) {
+        const delta = run.score - baseline.score;
+        comparison = {
+          baselineRunId: baseline.id,
+          baselineScore: baseline.score,
+          delta,
+          regressed: delta < 0
+        };
+      }
+    }
+    return {
+      run,
+      results,
+      comparison,
+      regressionFailed: Boolean(comparison?.regressed)
+    };
+  }
+
+  async runEval(opts: { datasetId: string; baselineRunId?: string; failOnRegression?: boolean }): Promise<EvalRunReport> {
+    const dataset = this.db.getEvalDatasetById(opts.datasetId);
+    if (!dataset) {
+      throw new Error(`Eval dataset not found: ${opts.datasetId}`);
+    }
+    const caseRows = this.db.listEvalCases(opts.datasetId);
+    if (caseRows.length === 0) {
+      throw new Error(`Eval dataset has no cases: ${opts.datasetId}`);
+    }
+
+    const runId = randomUUID();
+    const now = this.nowIso();
+    this.db.insertEvalRun({
+      id: runId,
+      dataset_id: opts.datasetId,
+      baseline_run_id: opts.baselineRunId ?? null,
+      status: 'running',
+      score: 0,
+      summary_json: JSON.stringify({ status: 'running' }),
+      created_at: now,
+      completed_at: null
+    });
+
+    const cases = caseRows.map((row) => this.parseEvalCase(row));
+    const metrics = {
+      skillsCount: this.inventory().length,
+      adaptersCount: this.listAdapters().length,
+      telemetryTotal: this.telemetryStatus().totals.total
+    };
+
+    let weightedPassScore = 0;
+    let totalWeight = 0;
+    let passed = 0;
+    const results: EvalResult[] = [];
+    for (const evalCase of cases) {
+      const evaluation = this.evaluateCase(evalCase, metrics);
+      const caseScore = evaluation.passed ? evalCase.weight : 0;
+      weightedPassScore += caseScore;
+      totalWeight += evalCase.weight;
+      if (evaluation.passed) {
+        passed += 1;
+      }
+      const result: EvalResult = {
+        id: randomUUID(),
+        runId,
+        caseId: evalCase.id,
+        status: evaluation.passed ? 'pass' : 'fail',
+        score: caseScore,
+        details: evaluation.details,
+        createdAt: now
+      };
+      this.db.insertEvalResult({
+        id: result.id,
+        run_id: result.runId,
+        case_id: result.caseId,
+        status: result.status,
+        score: result.score,
+        details_json: JSON.stringify(result.details),
+        created_at: result.createdAt
+      });
+      results.push(result);
+    }
+
+    const score = totalWeight > 0 ? Number((weightedPassScore / totalWeight).toFixed(4)) : 0;
+    const summary = {
+      totalCases: cases.length,
+      passed,
+      failed: cases.length - passed,
+      metrics
+    };
+    this.db.updateEvalRun({
+      id: runId,
+      status: 'completed',
+      score,
+      summary_json: JSON.stringify(summary),
+      completed_at: now
+    });
+
+    const run = this.parseEvalRun({
+      id: runId,
+      dataset_id: opts.datasetId,
+      baseline_run_id: opts.baselineRunId ?? null,
+      status: 'completed',
+      score,
+      summary_json: JSON.stringify(summary),
+      created_at: now,
+      completed_at: now
+    });
+
+    let comparison: EvalRunReport['comparison'];
+    if (opts.baselineRunId) {
+      const baseline = this.db.getEvalRunById(opts.baselineRunId);
+      if (baseline) {
+        const delta = run.score - baseline.score;
+        comparison = {
+          baselineRunId: baseline.id,
+          baselineScore: baseline.score,
+          delta,
+          regressed: delta < 0
+        };
+      }
+    }
+
+    await this.recordTelemetry({
+      eventType: 'eval.run.completed',
+      subjectType: 'eval_run',
+      subjectId: runId,
+      details: {
+        datasetId: opts.datasetId,
+        score,
+        baselineRunId: opts.baselineRunId ?? null,
+        regression: comparison?.regressed ?? false
+      }
+    });
+
+    const regressionFailed = Boolean(opts.failOnRegression && comparison?.regressed);
+    return { run, results, comparison, regressionFailed };
+  }
+
+  async compareEvalRun(runId: string): Promise<{
+    runId: string;
+    baselineRunId: string;
+    score: number;
+    baselineScore: number;
+    delta: number;
+    regressed: boolean;
+  }> {
+    const run = this.db.getEvalRunById(runId);
+    if (!run) {
+      throw new Error(`Eval run not found: ${runId}`);
+    }
+    let baselineId = run.baseline_run_id;
+    if (!baselineId) {
+      const siblingRuns = this.db.listEvalRuns(run.dataset_id).filter((entry) => entry.id !== run.id);
+      baselineId = siblingRuns[0]?.id ?? null;
+    }
+    if (!baselineId) {
+      throw new Error(`No baseline run available for ${runId}`);
+    }
+
+    const baseline = this.db.getEvalRunById(baselineId);
+    if (!baseline) {
+      throw new Error(`Baseline run not found: ${baselineId}`);
+    }
+    const delta = run.score - baseline.score;
+    const comparison = {
+      runId: run.id,
+      baselineRunId: baseline.id,
+      score: run.score,
+      baselineScore: baseline.score,
+      delta,
+      regressed: delta < 0
+    };
+
+    await this.recordTelemetry({
+      eventType: 'eval.run.compared',
+      subjectType: 'eval_run',
+      subjectId: run.id,
+      details: comparison
+    });
+
+    return comparison;
+  }
+
+  authMode(): 'off' | 'required' {
+    return process.env.SKILLVAULT_AUTH_MODE === 'required' ? 'required' : 'off';
+  }
+
+  async authBootstrap(): Promise<{ principalId: string; roleName: string; token: string }> {
+    const result = this.auth.bootstrap();
+    await this.recordTelemetry({
+      eventType: 'auth.bootstrap.completed',
+      subjectType: 'principal',
+      subjectId: result.principalId,
+      details: { roleName: result.roleName }
+    });
+    return result;
+  }
+
+  listAuthRoles(): Role[] {
+    return this.auth.listRoles();
+  }
+
+  async createAuthToken(opts: {
+    principalId: string;
+    roleName: 'admin' | 'operator' | 'viewer';
+    label?: string;
+    expiresAt?: string;
+  }): Promise<{ token: string; record: ApiTokenRecord }> {
+    this.auth.getOrCreatePrincipal({
+      id: opts.principalId,
+      name: opts.principalId,
+      type: 'service'
+    });
+    const created = this.auth.createToken({
+      principalId: opts.principalId,
+      roleName: opts.roleName,
+      label: opts.label,
+      expiresAt: opts.expiresAt
+    });
+    await this.recordTelemetry({
+      eventType: 'auth.token.created',
+      subjectType: 'principal',
+      subjectId: opts.principalId,
+      details: {
+        roleName: opts.roleName,
+        label: opts.label ?? `${opts.roleName}-token`,
+        tokenId: created.record.id
+      }
+    });
+    return created;
+  }
+
+  authenticateToken(token: string): AuthSession | null {
+    return this.auth.resolveSession(token);
+  }
+
+  authorizeToken(token: string, permission: string): AuthSession | null {
+    return this.auth.authorize(token, permission);
+  }
+
+  telemetryStatus(limit = 25) {
+    return this.telemetry.status(limit);
+  }
+
+  async flushTelemetry(opts: { target: 'jsonl' | 'weave'; maxEvents?: number }): Promise<{
+    target: 'jsonl' | 'weave';
+    processed: number;
+    sent: number;
+    retried: number;
+    deadLetter: number;
+    outputPath?: string;
+  }> {
+    if (opts.target === 'jsonl') {
+      return this.telemetry.flushJsonl(opts.maxEvents ?? 100);
+    }
+
+    const events = this.telemetry.listOutbox(opts.maxEvents ?? 100);
+    if (events.length === 0) {
+      return { target: 'weave', processed: 0, sent: 0, retried: 0, deadLetter: 0 };
+    }
+
+    const config = weaveConfigFromEnv();
+    if (!config) {
+      return { target: 'weave', processed: 0, sent: 0, retried: 0, deadLetter: 0 };
+    }
+
+    const exporter = new WeaveExporter(config);
+    try {
+      await exporter.exportEvents(events);
+      let sent = 0;
+      for (const event of events) {
+        if (this.telemetry.markSent(event.id, 'weave')) {
+          sent += 1;
+        }
+      }
+      return {
+        target: 'weave',
+        processed: events.length,
+        sent,
+        retried: 0,
+        deadLetter: 0
+      };
+    } catch (error) {
+      let retried = 0;
+      let deadLetter = 0;
+      for (const event of events) {
+        const nextStatus = this.telemetry.markRetry(
+          event.id,
+          'weave',
+          error instanceof Error ? error.message : String(error)
+        );
+        if (nextStatus === 'dead_letter') {
+          deadLetter += 1;
+        } else if (nextStatus === 'retry') {
+          retried += 1;
+        }
+      }
+      return {
+        target: 'weave',
+        processed: events.length,
+        sent: 0,
+        retried,
+        deadLetter
+      };
+    }
   }
 }

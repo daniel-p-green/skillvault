@@ -317,8 +317,22 @@ a {
   background: linear-gradient(90deg, var(--accent-ember), #ff9a68);
 }
 
+.button:focus-visible,
+.chip:focus-visible,
+.nav-button:focus-visible,
+.input:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--accent-ice);
+  outline-offset: 2px;
+}
+
 .error-copy {
   color: var(--danger);
+}
+
+.stack-sm {
+  display: grid;
+  gap: 10px;
 }
 
 .footer-note {

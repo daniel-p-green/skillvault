@@ -1,59 +1,51 @@
 # Use Cases
 
-## UC-1 Import and inventory a new skill
+## UC-1 Import and inventory a skill bundle
 
 - Actor: Solo developer
-- Trigger: Receives a skill bundle path or zip
 - Workflow:
   1. `skillvault manager import <bundle>`
   2. `skillvault manager inventory`
-- Adapter targets: Any (inventory-only)
-- Expected result: Skill version stored in vault with scan and receipt metadata.
+- Expected result: canonical version saved with scan + receipt metadata.
 
-## UC-2 Deploy one skill to one app
+## UC-2 Multi-adapter deploy and drift audit
 
-- Actor: Multi-app power user
-- Trigger: Wants to install a specific skill in Codex
-- Workflow:
-  1. `skillvault manager deploy <skill_id> --adapter codex --scope project --mode symlink`
-- Adapter targets: `codex`
-- Expected result: Skill linked into adapter path and tracked in deployments.
-
-## UC-3 Deploy one skill to multiple apps
-
-- Actor: Multi-app power user
-- Trigger: Needs parity across app set
+- Actor: Multi-app user
 - Workflow:
   1. `skillvault manager deploy <skill_id> --adapter '*' --scope project --mode symlink`
-- Adapter targets: `codex`, `windsurf`, `openclaw`, `cursor`, `claude-code`, others enabled
-- Expected result: Deployment results per adapter with success/skip/fail status.
+  2. `skillvault manager audit`
+- Expected result: adapter-level deployment outcomes plus drift/staleness summary.
 
-## UC-4 Verify receipt trust before policy gating
+## UC-3 Receipt trust gate with enforced key verification
 
 - Actor: Security owner
-- Trigger: Receipt-only gate request
 - Workflow:
   1. `skillvault gate --receipt receipt.json --pubkey key.pem --policy policy.yaml`
-  2. optional integrity check: `--bundle <bundle>`
-- Adapter targets: N/A (trust layer)
-- Expected result: Gate fails if signature/key trust fails.
+  2. Optional: `--bundle <path>` for integrity verification.
+- Expected result: gate fails when trust verification fails; policy verdict is deterministic.
 
-## UC-5 Detect drift after out-of-band edits
+## UC-4 Telemetry outbox operations
+
+- Actor: Ops owner
+- Workflow:
+  1. `skillvault manager telemetry status`
+  2. `skillvault manager telemetry flush --target jsonl|weave`
+- Expected result: outbox visibility with sent/retry/dead-letter outcomes.
+
+## UC-5 Eval regression loop
+
+- Actor: Ops owner
+- Workflow:
+  1. `skillvault manager eval datasets seed`
+  2. `skillvault manager eval run --dataset default-manager-regression`
+  3. `skillvault manager eval compare --run <id>`
+- Expected result: run score and baseline delta are explicit.
+
+## UC-6 Enable API access control for shared environments
 
 - Actor: Team lead
-- Trigger: Suspects manual file changes after deployment
 - Workflow:
-  1. Mutate installed copy outside manager
-  2. `skillvault manager audit`
-- Adapter targets: Any deployed adapter
-- Expected result: Drifted deployment appears in audit summary.
-
-## UC-6 Discover and import from skills ecosystem
-
-- Actor: Power user
-- Trigger: Needs a skill by domain query
-- Workflow:
-  1. `skillvault manager discover --query "<text>"`
-  2. `skillvault manager import <bundle>`
-- Adapter targets: N/A until deployed
-- Expected result: Discovery results are reviewable and import path is immediate.
+  1. `skillvault manager auth bootstrap`
+  2. `skillvault manager auth token create --principal <id> --role viewer|operator|admin`
+  3. Run API with `SKILLVAULT_AUTH_MODE=required`
+- Expected result: protected routes require bearer token and role permission.
