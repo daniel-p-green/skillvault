@@ -127,4 +127,20 @@ describe('skillvault receipt', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('forces policy FAIL when scan includes error-severity findings', async () => {
+    const bundleDir = path.join(FIXTURES, 'missing-manifest');
+    const policyPath = path.join(FIXTURES, 'policy-pass.yaml');
+
+    const receipt = await generateReceipt(bundleDir, {
+      policyPath,
+      signingKeyPath: PRIVATE_KEY,
+      keyId: 'fixture-ed25519',
+      deterministic: true
+    });
+
+    expect(receipt.scan.findings.some((finding) => finding.severity === 'error')).toBe(true);
+    expect(receipt.policy.verdict).toBe('FAIL');
+    expect(receipt.policy.findings.map((finding) => finding.code)).toContain('POLICY_SCAN_ERROR_FINDING');
+  });
 });

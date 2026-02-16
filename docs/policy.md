@@ -114,8 +114,10 @@ Named policy overlays selectable via CLI flags.
 ## How policies are applied
 
 - `receipt`: scans the bundle and embeds the **policy decision** into the receipt.
+  - v0.2 hardening: if scan findings include any `error` severity finding, receipt policy verdict is forced to `FAIL` with reason code `POLICY_SCAN_ERROR_FINDING`.
 - `verify`: recomputes hashes, validates receipt integrity, and **hard-fails** on policy/constraint violations.
 - `gate`: applies policy to a bundle (scan + gate) or to a receipt (receipt-only gate).
+  - v0.2 hardening: `gate --receipt` requires exactly one of `--pubkey` or `--keyring` and verifies signature trust before policy evaluation.
 
 See also:
 - CLI reference: `docs/cli.md`

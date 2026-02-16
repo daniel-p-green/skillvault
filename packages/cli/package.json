@@ -14,6 +14,8 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
+    "@skillvault/manager-api": "file:../manager-api",
+    "@skillvault/manager-core": "file:../manager-core",
     "adm-zip": "^0.5.16",
     "yargs": "^17.7.2",
     "yaml": "^2.8.1"

@@ -1,11 +1,20 @@
 # skillvault
 
-Local-first trust receipts + deterministic policy gating for **SKILL.md bundles**.
+SkillVault v0.2 is a local-first **skill trust + deployment manager** for multi-agent environments.
 
-v0.1 decisions:
-- **SKILL.md bundles only** (exactly one `SKILL.md`/`skill.md` manifest)
-- Receipts are **Ed25519-signed** and offline-verifiable by deterministic hashing
-- Scanning/scoring is **deterministic + rule-based** (no LLM scoring path)
+It keeps the v0.1 trust layer (`scan`, `receipt`, `verify`, `gate`, `diff`, `export`) and adds:
+- a manager vault (`.skillvault/`) with SQLite metadata + canonical file storage
+- multi-app adapter deployment (Codex, Windsurf, OpenClaw, Cursor, Claude Code, and more)
+- local API service for automation and GUI
+- React manager UI ("Operations Atelier")
+
+## Why v0.2
+
+Teams run skills across multiple AI apps. SkillVault v0.2 gives one local control plane to:
+- ingest and inventory skill bundles
+- evaluate risk and trust receipts
+- deploy/undeploy across adapters
+- audit drift and stale scans
 
 ## Requirements
 - Node.js >= 18
@@ -16,81 +25,123 @@ v0.1 decisions:
 npm install
 ```
 
-## Build
+## Build, Typecheck, Test
 
 ```bash
 npm run build
+npm run typecheck
+npm test
 ```
 
 ## Quickstart
 
-Run the CLI via the built JS:
+### 1) Initialize manager storage
 
 ```bash
-node packages/cli/dist/cli.js --help
+node packages/cli/dist/cli.js manager init
 ```
 
-Scan a bundle (directory or zip):
+Creates:
+- `.skillvault/skillvault.db`
+- `.skillvault/vault/`
+- `.skillvault/receipts/`
+- `.skillvault/export/`
+
+### 2) Import and inventory a skill
 
 ```bash
-node packages/cli/dist/cli.js scan <bundle_dir|bundle.zip> --format table
+node packages/cli/dist/cli.js manager import /path/to/skill-bundle
+node packages/cli/dist/cli.js manager inventory --format table
 ```
 
-Generate a receipt:
+### 3) Deploy across adapters
 
 ```bash
-node packages/cli/dist/cli.js receipt <bundle_dir|bundle.zip> --signing-key ed25519-private.pem --out receipt.json
+node packages/cli/dist/cli.js manager deploy <skill_id> --adapter codex --scope project --mode symlink
+node packages/cli/dist/cli.js manager deploy <skill_id> --adapter '*' --scope project --mode symlink
 ```
 
-Verify a bundle matches a receipt (offline):
+### 4) Audit drift and stale state
 
 ```bash
-node packages/cli/dist/cli.js verify <bundle_dir|bundle.zip> --receipt receipt.json --pubkey ed25519-public.pem --offline --format table
+node packages/cli/dist/cli.js manager audit --stale-days 14 --format table
 ```
 
-Apply a policy gate:
+### 5) Start API + GUI
 
 ```bash
-node packages/cli/dist/cli.js gate <bundle_dir|bundle.zip> --policy policy.yaml --format table
-# or gate an existing receipt:
-node packages/cli/dist/cli.js gate --receipt receipt.json --policy policy.yaml --format table
+npm run dev:api
+npm run dev:web
+# or both:
+npm run dev:manager
 ```
 
-Diff two bundles/receipts:
+Manager API defaults to `http://127.0.0.1:4646`.
 
-```bash
-node packages/cli/dist/cli.js diff --a <bundle|receipt> --b <bundle|receipt> --format table
-```
+## Adapter Matrix (v0.2 Snapshot)
 
-Export a directory bundle to a strict zip:
+Built-in snapshot includes:
 
-```bash
-node packages/cli/dist/cli.js export <bundle_dir> --out bundle.zip --policy policy.yaml --profile strict_v0
-```
+`amp`, `kimi-cli`, `replit`, `antigravity`, `augment`, `claude-code`, `openclaw`, `cline`, `codebuddy`, `codex`, `command-code`, `continue`, `crush`, `cursor`, `droid`, `gemini-cli`, `github-copilot`, `goose`, `junie`, `iflow-cli`, `kilo`, `kiro-cli`, `kode`, `mcpjam`, `mistral-vibe`, `mux`, `opencode`, `openhands`, `pi`, `qoder`, `qwen-code`, `roo`, `trae`, `trae-cn`, `windsurf`, `zencoder`, `neovate`, `pochi`, `adal`.
 
-Deterministic mode (for goldens / CI):
+OpenClaw fallback detection order:
+1. `~/.openclaw/skills`
+2. `~/.clawdbot/skills`
+3. `~/.moltbot/skills`
 
-```bash
-node packages/cli/dist/cli.js scan <bundle> --format json --deterministic
-```
+## GUI Screenshots (Placeholder)
 
-## Command reference
+Screenshots will be added here as the v0.2 interface stabilizes:
+- Dashboard
+- Skill Detail
+- Adapters
+- Deploy Flow
+- Audit
+- Discover
 
-- CLI: [`docs/cli.md`](./docs/cli.md)
+## Trust Model and Security Caveats
+
+v0.2 keeps v0.1 deterministic trust behavior and hardens receipt gating:
+
+- `verify` requires exactly one of `--pubkey` or `--keyring`.
+- `gate --receipt` now also requires exactly one of `--pubkey` or `--keyring`.
+- `gate --receipt` fails before policy evaluation if signature trust cannot be established.
+- optional `gate --receipt --bundle <path>` performs full content/hash verification before policy gating.
+- receipt generation forces policy `FAIL` when scan findings contain any `error` severity.
+
+SkillVault is local-first and not a central registry. Trust still depends on your key management and policy definitions.
+
+## Command Families
+
+### Trust layer (v0.1-compatible)
+- `skillvault scan`
+- `skillvault receipt`
+- `skillvault verify`
+- `skillvault gate`
+- `skillvault diff`
+- `skillvault export`
+
+### Manager layer (v0.2)
+- `skillvault manager init`
+- `skillvault manager adapters list`
+- `skillvault manager adapters sync-snapshot`
+- `skillvault manager import`
+- `skillvault manager inventory`
+- `skillvault manager deploy`
+- `skillvault manager undeploy`
+- `skillvault manager audit`
+- `skillvault manager discover`
+- `skillvault manager serve`
+
+## Docs
+
+- CLI reference: [`docs/cli.md`](./docs/cli.md)
 - Policy schema: [`docs/policy.md`](./docs/policy.md)
-- Risk scoring rubric: [`docs/scoring.md`](./docs/scoring.md)
-- JSON output contracts: [`docs/schemas.md`](./docs/schemas.md)
-- Signing + keyring usage: [`docs/signing.md`](./docs/signing.md)
-- Deterministic mode + goldens: [`docs/deterministic.md`](./docs/deterministic.md)
-- PRD: [`docs/PRD.md`](./docs/PRD.md)
-
-## Scripts
-
-```bash
-npm test
-npm run typecheck
-npm run build
-```
+- Scoring: [`docs/scoring.md`](./docs/scoring.md)
+- JSON and manager schemas: [`docs/schemas.md`](./docs/schemas.md)
+- Product docs: [`docs/product/JTBD.md`](./docs/product/JTBD.md)
+- PRD v0.2: [`docs/PRD.md`](./docs/PRD.md)
 
 ## License
+
 MIT (see [`LICENSE`](./LICENSE)).

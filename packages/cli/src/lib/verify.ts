@@ -23,6 +23,11 @@ export interface VerifyOptions {
   deterministic: boolean;
 }
 
+export interface VerifyReceiptSignatureOptions {
+  pubkeyPath?: string;
+  keyringDir?: string;
+}
+
 function addFinding(findings: Finding[], code: ReasonCode, severity: Finding['severity'], message: string, extra?: Partial<Finding>): void {
   findings.push({ code, severity, message, ...extra });
 }
@@ -148,7 +153,7 @@ function resolveKeyringCandidates(keyringDir: string, keyId?: string): string[] 
   ];
 }
 
-async function resolvePublicKeyPem(opts: VerifyOptions, keyId?: string): Promise<{ pem?: string; source?: string }> {
+async function resolvePublicKeyPem(opts: VerifyReceiptSignatureOptions, keyId?: string): Promise<{ pem?: string; source?: string }> {
   if (opts.pubkeyPath) {
     const pem = await fs.readFile(opts.pubkeyPath, 'utf8');
     return { pem, source: opts.pubkeyPath };
@@ -186,6 +191,53 @@ function verifyReceiptSignature(receipt: Receipt, publicKeyPem: string): { valid
   const publicKey = createPublicKey(publicKeyPem);
   const valid = cryptoVerify(null, payloadBytes, publicKey, sigBytes);
   return { valid, payloadSha256Hex };
+}
+
+export async function verifyReceiptSignatureOnly(
+  receiptPath: string,
+  opts: VerifyReceiptSignatureOptions
+): Promise<{ receipt?: Receipt; findings: Finding[]; verified: boolean }> {
+  const findings: Finding[] = [];
+  const { receipt, errorFinding } = await readReceipt(receiptPath);
+  if (!receipt) {
+    if (errorFinding) findings.push(errorFinding);
+    return { findings, verified: false };
+  }
+
+  const { pem: pubkeyPem, source: keySource } = await resolvePublicKeyPem(opts, receipt.signature?.key_id);
+  if (!pubkeyPem) {
+    addFinding(findings, 'SIGNATURE_KEY_NOT_FOUND', 'error', 'Unable to resolve verification key for receipt signature', {
+      details: {
+        key_id: receipt.signature?.key_id,
+        keyring: opts.keyringDir
+      }
+    });
+    return { receipt, findings, verified: false };
+  }
+
+  try {
+    const { valid, payloadSha256Hex } = verifyReceiptSignature(receipt, pubkeyPem);
+    if (!valid) {
+      addFinding(findings, 'SIGNATURE_INVALID', 'error', 'Receipt signature verification failed', {
+        details: {
+          key_source: keySource,
+          expected_payload_sha256: receipt.signature?.payload_sha256,
+          computed_payload_sha256: payloadSha256Hex
+        }
+      });
+      return { receipt, findings, verified: false };
+    }
+  } catch (err) {
+    addFinding(findings, 'SIGNATURE_INVALID', 'error', 'Receipt signature verification failed', {
+      details: {
+        key_source: keySource,
+        error: err instanceof Error ? err.message : String(err)
+      }
+    });
+    return { receipt, findings, verified: false };
+  }
+
+  return { receipt, findings, verified: true };
 }
 
 export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Promise<{ report: VerifyReport; exitCode: number }> {

@@ -7,6 +7,8 @@ import { generateReceipt } from '../src/lib/receipt.js';
 import { DETERMINISTIC_CREATED_AT_ISO } from '../src/lib/time.js';
 
 const FIXTURES = path.resolve(process.cwd(), 'test', 'fixtures');
+const PRIVATE_KEY = path.join(FIXTURES, 'keys', 'ed25519-private.pem');
+const PUBLIC_KEY = path.join(FIXTURES, 'keys', 'ed25519-public.pem');
 
 async function readJson(p: string): Promise<any> {
   const raw = await fs.readFile(p, 'utf8');
@@ -25,7 +27,12 @@ describe('skillvault gate', () => {
       const bundleDir = path.join(tmpDir, 'bundle');
       await fs.cp(bundleSrc, bundleDir, { recursive: true });
 
-      const receipt = await generateReceipt(bundleDir, { policyPath, deterministic: true });
+      const receipt = await generateReceipt(bundleDir, {
+        policyPath,
+        signingKeyPath: PRIVATE_KEY,
+        keyId: 'fixture-ed25519',
+        deterministic: true
+      });
 
       const receiptPath = path.join(tmpDir, 'receipt.json');
       await fs.writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
@@ -43,6 +50,8 @@ describe('skillvault gate', () => {
         receiptPath,
         '--policy',
         policyPath,
+        '--pubkey',
+        PUBLIC_KEY,
         '--deterministic',
         '--out',
         outPath
@@ -154,11 +163,15 @@ describe('skillvault gate', () => {
   });
 
   it('fails when policy requires approval but none are present (v0.1 placeholder) via receipt gating', async () => {
-    const bundleDir = path.join(FIXTURES, 'benign-skill');
+    const bundleDir = path.join(FIXTURES, 'capability-triggers');
     const policyPath = path.join(FIXTURES, 'policy-require-approval.yaml');
 
-    const receipt = await generateReceipt(bundleDir, { policyPath: undefined, deterministic: true });
-    receipt.scan.capabilities = ['network'] as any;
+    const receipt = await generateReceipt(bundleDir, {
+      policyPath: undefined,
+      signingKeyPath: PRIVATE_KEY,
+      keyId: 'fixture-ed25519',
+      deterministic: true
+    });
 
     const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
 
@@ -176,6 +189,8 @@ describe('skillvault gate', () => {
         receiptPath,
         '--policy',
         policyPath,
+        '--pubkey',
+        PUBLIC_KEY,
         '--deterministic',
         '--out',
         outPath
@@ -187,6 +202,82 @@ describe('skillvault gate', () => {
       expect(report.verdict).toBe('FAIL');
       const codes = report.findings.map((f: any) => f.code).sort();
       expect(codes).toContain('REQUIRED_APPROVAL_MISSING');
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('requires a trust key input for gate --receipt', async () => {
+    const bundleDir = path.join(FIXTURES, 'benign-skill');
+    const policyPath = path.join(FIXTURES, 'policy-pass.yaml');
+    const receipt = await generateReceipt(bundleDir, {
+      policyPath,
+      signingKeyPath: PRIVATE_KEY,
+      keyId: 'fixture-ed25519',
+      deterministic: true
+    });
+
+    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
+    try {
+      const receiptPath = path.join(tmpDir, 'receipt.json');
+      const outPath = path.join(tmpDir, 'gate.json');
+      await fs.writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
+
+      const code = await main([
+        'node',
+        'skillvault',
+        'gate',
+        '--receipt',
+        receiptPath,
+        '--policy',
+        policyPath,
+        '--deterministic',
+        '--out',
+        outPath
+      ]);
+
+      expect(code).toBe(2);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails with stable signature reason code when receipt signature is invalid', async () => {
+    const bundleDir = path.join(FIXTURES, 'benign-skill');
+    const policyPath = path.join(FIXTURES, 'policy-pass.yaml');
+    const receipt = await generateReceipt(bundleDir, {
+      policyPath,
+      signingKeyPath: PRIVATE_KEY,
+      keyId: 'fixture-ed25519',
+      deterministic: true
+    });
+    receipt.signature!.sig = 'ZmFrZV9zaWduYXR1cmU='; // invalid base64 signature payload
+
+    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test-tmp-'));
+    try {
+      const receiptPath = path.join(tmpDir, 'receipt.json');
+      const outPath = path.join(tmpDir, 'gate.json');
+      await fs.writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
+
+      const code = await main([
+        'node',
+        'skillvault',
+        'gate',
+        '--receipt',
+        receiptPath,
+        '--policy',
+        policyPath,
+        '--pubkey',
+        PUBLIC_KEY,
+        '--deterministic',
+        '--out',
+        outPath
+      ]);
+
+      expect(code).toBe(1);
+      const report = await readJson(outPath);
+      expect(report.verdict).toBe('FAIL');
+      expect(report.findings.map((f: any) => f.code)).toContain('SIGNATURE_INVALID');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

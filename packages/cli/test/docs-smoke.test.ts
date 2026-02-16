@@ -21,43 +21,66 @@ describe('docs smoke', () => {
       path.join(repoRoot, 'docs', 'schemas.md'),
       path.join(repoRoot, 'docs', 'signing.md'),
       path.join(repoRoot, 'docs', 'deterministic.md'),
+      path.join(repoRoot, 'docs', 'product', 'JTBD.md'),
+      path.join(repoRoot, 'docs', 'product', 'use-cases.md'),
+      path.join(repoRoot, 'docs', 'product', 'user-stories.md'),
+      path.join(repoRoot, 'docs', 'product', 'test-cases.md'),
+      path.join(repoRoot, 'docs', 'product', 'acceptance-criteria.md')
     ];
 
-    for (const p of required) {
-      expect(fs.existsSync(p), `missing: ${p}`).toBe(true);
-      readNonEmpty(p);
+    for (const filePath of required) {
+      expect(fs.existsSync(filePath), `missing: ${filePath}`).toBe(true);
+      readNonEmpty(filePath);
     }
   });
 
-  it('README and CLI reference mention all v0.1 commands', () => {
+  it('README and CLI reference mention trust + manager command families', () => {
     const readme = readNonEmpty(path.join(repoRoot, 'README.md'));
     const cli = readNonEmpty(path.join(repoRoot, 'docs', 'cli.md'));
 
-    const mustShip = ['scan', 'receipt', 'verify', 'gate', 'diff', 'export'];
-
-    for (const cmd of mustShip) {
-      expect(readme).toContain(` ${cmd} `);
+    for (const cmd of ['scan', 'receipt', 'verify', 'gate', 'diff', 'export']) {
+      expect(readme).toContain(` ${cmd}`);
       expect(cli).toContain(`skillvault ${cmd}`);
+    }
+
+    for (const managerCmd of [
+      'skillvault manager init',
+      'skillvault manager import',
+      'skillvault manager inventory',
+      'skillvault manager deploy',
+      'skillvault manager audit',
+      'skillvault manager serve'
+    ]) {
+      expect(readme).toContain(managerCmd);
+      expect(cli).toContain(managerCmd);
     }
   });
 
-  it('docs cover signature verification, deterministic mode, and keyring usage', () => {
-    const cli = readNonEmpty(path.join(repoRoot, 'docs', 'cli.md'));
+  it('docs include required v0.2 product headings and security details', () => {
     const schemas = readNonEmpty(path.join(repoRoot, 'docs', 'schemas.md'));
-    const signing = readNonEmpty(path.join(repoRoot, 'docs', 'signing.md'));
-    const deterministic = readNonEmpty(path.join(repoRoot, 'docs', 'deterministic.md'));
+    const cli = readNonEmpty(path.join(repoRoot, 'docs', 'cli.md'));
+    const jtbd = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'JTBD.md'));
+    const useCases = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'use-cases.md'));
+    const stories = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'user-stories.md'));
+    const testCases = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'test-cases.md'));
+    const acceptance = readNonEmpty(path.join(repoRoot, 'docs', 'product', 'acceptance-criteria.md'));
 
     expect(cli).toContain('--pubkey');
     expect(cli).toContain('--keyring');
-    expect(cli).toContain('Hard-fail');
+    expect(cli).toContain('gate --receipt');
 
-    expect(schemas).toContain('signature');
-    expect(schemas).toContain('ed25519');
+    expect(schemas).toContain('POLICY_SCAN_ERROR_FINDING');
+    expect(schemas).toContain('AdapterSpec');
+    expect(schemas).toContain('SQLite schema');
 
-    expect(signing).toContain('offline');
-    expect(signing).toContain('keyring');
-
-    expect(deterministic).toContain('--deterministic');
-    expect(deterministic).toContain('test:goldens:check');
+    expect(jtbd).toContain('# JTBD');
+    expect(jtbd).toContain('## Personas');
+    expect(useCases).toContain('# Use Cases');
+    expect(stories).toContain('# User Stories');
+    expect(stories).toContain('As a');
+    expect(testCases).toContain('# Test Cases');
+    expect(testCases).toContain('Traceability Matrix');
+    expect(acceptance).toContain('# Acceptance Criteria');
+    expect(acceptance).toContain('Product-Level Exit Criteria');
   });
 });

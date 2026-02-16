@@ -22,6 +22,21 @@ export async function generateReceipt(bundlePathOrZip: string, opts: ReceiptOpti
   // Load policy config (optional) and compute deterministic decision.
   const policyConfig = await loadPolicy(opts.policyPath);
   const policy = decidePolicy({ risk_score: scan.risk_score, gates: policyConfig?.gates });
+  const hasScanErrors = scan.findings.some((finding) => finding.severity === 'error');
+  const effectivePolicy = hasScanErrors
+    ? {
+        ...policy,
+        verdict: 'FAIL' as const,
+        findings: [
+          ...policy.findings,
+          {
+            code: 'POLICY_SCAN_ERROR_FINDING' as const,
+            severity: 'error' as const,
+            message: 'Receipt policy is forced to FAIL because scan findings contain error severity entries.'
+          }
+        ]
+      }
+    : policy;
 
   // CLI/package version.
   const pkgVersion = await readCliVersion();
@@ -42,7 +57,7 @@ export async function generateReceipt(bundlePathOrZip: string, opts: ReceiptOpti
       summary: scan.summary,
       findings: scan.findings
     },
-    policy
+    policy: effectivePolicy
   };
 
   if (!opts.signingKeyPath) {
