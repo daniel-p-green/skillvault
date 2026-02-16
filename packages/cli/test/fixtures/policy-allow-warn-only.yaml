@@ -1,0 +1,3 @@
+gates:
+  max_risk_score: 100
+  allow_verdicts: [WARN]

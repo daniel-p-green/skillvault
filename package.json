@@ -15,6 +15,8 @@
     "typecheck": "npm --workspaces run typecheck",
     "test": "npm --workspaces run test",
     "test:goldens": "npm --workspace @skillvault/cli run test:goldens",
+    "test:goldens:check": "./scripts/test-goldens.sh",
+    "test:goldens:update": "./scripts/test-goldens.sh --update",
     "clean": "npm --workspaces run clean && rm -rf node_modules"
   },
   "devDependencies": {

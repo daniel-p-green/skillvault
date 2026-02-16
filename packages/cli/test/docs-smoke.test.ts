@@ -18,6 +18,9 @@ describe('docs smoke', () => {
       path.join(repoRoot, 'docs', 'policy.md'),
       path.join(repoRoot, 'docs', 'scoring.md'),
       path.join(repoRoot, 'docs', 'PRD.md'),
+      path.join(repoRoot, 'docs', 'schemas.md'),
+      path.join(repoRoot, 'docs', 'signing.md'),
+      path.join(repoRoot, 'docs', 'deterministic.md'),
     ];
 
     for (const p of required) {
@@ -36,5 +39,25 @@ describe('docs smoke', () => {
       expect(readme).toContain(` ${cmd} `);
       expect(cli).toContain(`skillvault ${cmd}`);
     }
+  });
+
+  it('docs cover signature verification, deterministic mode, and keyring usage', () => {
+    const cli = readNonEmpty(path.join(repoRoot, 'docs', 'cli.md'));
+    const schemas = readNonEmpty(path.join(repoRoot, 'docs', 'schemas.md'));
+    const signing = readNonEmpty(path.join(repoRoot, 'docs', 'signing.md'));
+    const deterministic = readNonEmpty(path.join(repoRoot, 'docs', 'deterministic.md'));
+
+    expect(cli).toContain('--pubkey');
+    expect(cli).toContain('--keyring');
+    expect(cli).toContain('Hard-fail');
+
+    expect(schemas).toContain('signature');
+    expect(schemas).toContain('ed25519');
+
+    expect(signing).toContain('offline');
+    expect(signing).toContain('keyring');
+
+    expect(deterministic).toContain('--deterministic');
+    expect(deterministic).toContain('test:goldens:check');
   });
 });

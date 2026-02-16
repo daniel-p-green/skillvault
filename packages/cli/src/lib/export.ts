@@ -2,13 +2,16 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 
-import type { Finding, ReasonCode } from '../contracts.js';
+import type { ExportReport, Finding, ReasonCode } from '../contracts.js';
 import { CONTRACT_VERSION } from '../contracts.js';
 import { nowIso, DETERMINISTIC_CREATED_AT_ISO } from './time.js';
 import { readBundle } from './bundle.js';
 import { bundleSha256FromEntries, sha256Hex } from './hash.js';
+import { comparePathBytes } from '../bundle/hashing.js';
 import type { PolicyProfileV1, PolicyV1 } from '../policy-v1.js';
 import { loadPolicyV1 } from './policy-loader.js';
+import { detectManifestFromEntries } from '../manifest/manifest.js';
+import { tokenCountNormalized } from '../text/normalize.js';
 
 export interface ExportOptions {
   outPath: string;
@@ -17,23 +20,8 @@ export interface ExportOptions {
   deterministic: boolean;
 }
 
-export interface ExportReport {
-  contract_version: typeof CONTRACT_VERSION;
-  created_at: string;
-  profile: string;
-  out_path: string;
-  bundle_sha256: string;
-  files: Array<{ path: string; size: number; sha256: string }>;
-  findings: Finding[];
-  validated: boolean;
-}
-
 function addFinding(findings: Finding[], code: ReasonCode, severity: Finding['severity'], message: string, extra?: Partial<Finding>): void {
   findings.push({ code, severity, message, ...extra });
-}
-
-function isManifestPath(p: string): boolean {
-  return p === 'SKILL.md' || p === 'skill.md';
 }
 
 function normalizeExportRelPath(p: string): string {
@@ -106,26 +94,13 @@ function selectPolicyProfile(policy: PolicyV1 | undefined, profileName: string):
   return mergeProfile(mergeProfile(builtIn, topLevel), named);
 }
 
-function tokenCount(text: string): number {
-  // For deterministic token count only; hashing uses raw bytes.
-  const norm = text.normalize('NFC').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  return norm.split(/\s+/g).filter(Boolean).length;
-}
-
 function enforceConstraintsFromProfile(findings: Finding[], profile: PolicyProfileV1, files: Array<{ path: string; size: number; bytes?: Uint8Array }>): void {
   const constraints = profile.constraints;
   if (!constraints) return;
 
   if (constraints.exactly_one_manifest) {
-    const manifestCandidates = files.filter((f) => isManifestPath(f.path));
-    if (manifestCandidates.length !== 1) {
-      addFinding(
-        findings,
-        'CONSTRAINT_MANIFEST_COUNT',
-        'error',
-        `Expected exactly one manifest (SKILL.md or skill.md) in bundle root; found ${manifestCandidates.length}`
-      );
-    }
+    const { findings: manifestFindings } = detectManifestFromEntries(files);
+    findings.push(...manifestFindings);
   }
 
   if (typeof constraints.bundle_size_limit_bytes === 'number') {
@@ -149,10 +124,11 @@ function enforceConstraintsFromProfile(findings: Finding[], profile: PolicyProfi
   }
 
   if (typeof constraints.max_manifest_tokens_warn === 'number' || typeof constraints.max_manifest_tokens_fail === 'number') {
-    const manifest = files.find((f) => isManifestPath(f.path));
+    const manifestPath = detectManifestFromEntries(files).manifest?.path;
+    const manifest = manifestPath ? files.find((f) => f.path === manifestPath) : undefined;
     if (manifest?.bytes) {
       const text = new TextDecoder('utf-8', { fatal: false }).decode(manifest.bytes);
-      const tokens = tokenCount(text);
+      const tokens = tokenCountNormalized(text);
 
       if (typeof constraints.max_manifest_tokens_warn === 'number' && tokens > constraints.max_manifest_tokens_warn) {
         addFinding(findings, 'CONSTRAINT_TOKEN_LIMIT_WARN', 'warn', `Manifest token count ${tokens} exceeds warn threshold ${constraints.max_manifest_tokens_warn}`, {
@@ -196,7 +172,7 @@ export async function exportBundleToZip(bundleDir: string, opts: ExportOptions):
     addFinding(findings, 'CONSTRAINT_SYMLINK_FORBIDDEN', 'error', err instanceof Error ? err.message : String(err));
   }
 
-  relPaths.sort((a, b) => a.localeCompare(b));
+  relPaths.sort(comparePathBytes);
 
   const fileObjs: Array<{ path: string; size: number; bytes: Uint8Array; sha256: string }> = [];
   for (const rel of relPaths) {
@@ -250,7 +226,7 @@ export async function exportBundleToZip(bundleDir: string, opts: ExportOptions):
     bytes: f.bytes,
     sha256: sha256Hex(f.bytes)
   }));
-  reopenedFiles.sort((a, b) => a.path.localeCompare(b.path));
+  reopenedFiles.sort((a, b) => comparePathBytes(a.path, b.path));
 
   for (const f of reopenedFiles) {
     enforcePathSafety(findings, f.path);

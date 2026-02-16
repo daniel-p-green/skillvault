@@ -2,10 +2,10 @@
   "contract_version": "0.1",
   "created_at": "1970-01-01T00:00:00.000Z",
   "a": {
-    "bundle_sha256": "cc9d123fd6f944034c45aa2d8c0b519e7c4c506ae2042d242aac5e3bbeab3d5e"
+    "bundle_sha256": "7c42f41066c7cd6c0a435241557ce7ecdd40203632d4633ec33a77dbf587ff75"
   },
   "b": {
-    "bundle_sha256": "298629b5f6f3572f8c6139352de3bb5c1a8457ea7af6b6fec68156c5f0f1bcb8"
+    "bundle_sha256": "6db273853a68285794440d3b2fc848e49396bfef592df8585d20ed724309d61f"
   },
   "file_diffs": [
     {
@@ -34,7 +34,9 @@
     }
   ],
   "capability_deltas": {
-    "added": [],
+    "added": [
+      "exec"
+    ],
     "removed": []
   },
   "finding_deltas": {

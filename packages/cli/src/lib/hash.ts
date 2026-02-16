@@ -1,23 +1,11 @@
-import { createHash } from 'node:crypto';
+import type { FileEntry } from '../contracts.js';
+import { computeBundleSha256, sha256Hex } from '../bundle/hashing.js';
 
-export function sha256Hex(data: Uint8Array): string {
-  return createHash('sha256').update(data).digest('hex');
-}
+export { sha256Hex };
 
 /**
- * Deterministic, platform-independent bundle hash.
- *
- * Spec v0.1:
- * - compute per-file sha256 over raw bytes
- * - bundle hash = sha256 over (path + '\0' + file_sha256 + '\0') for each file in sorted path order
+ * Backward-compatible wrapper used by existing scan/verify/export paths.
  */
-export function bundleSha256FromEntries(entries: { path: string; sha256: string }[]): string {
-  const h = createHash('sha256');
-  for (const e of entries) {
-    h.update(e.path, 'utf8');
-    h.update('\0', 'utf8');
-    h.update(e.sha256, 'utf8');
-    h.update('\0', 'utf8');
-  }
-  return h.digest('hex');
+export function bundleSha256FromEntries(entries: Array<Pick<FileEntry, 'path' | 'sha256'>>): string {
+  return computeBundleSha256(entries.map((e) => ({ path: e.path, size: 0, sha256: e.sha256 })));
 }

@@ -1,7 +1,7 @@
 {
   "contract_version": "0.1",
   "created_at": "1970-01-01T00:00:00.000Z",
-  "bundle_sha256": "298629b5f6f3572f8c6139352de3bb5c1a8457ea7af6b6fec68156c5f0f1bcb8",
+  "bundle_sha256": "6db273853a68285794440d3b2fc848e49396bfef592df8585d20ed724309d61f",
   "files": [
     {
       "path": "SKILL.md",
@@ -19,12 +19,14 @@
     "size": 272,
     "sha256": "6c5c756b4b134d1f7c3dd166d65dc7fea4ea6f7d623debb6bbe84e772b3a7458"
   },
-  "capabilities": [],
+  "capabilities": [
+    "exec"
+  ],
   "risk_score": {
-    "base_risk": 0,
+    "base_risk": 25,
     "change_risk": 0,
     "policy_delta": 0,
-    "total": 0
+    "total": 25
   },
   "summary": {
     "file_count": 2,

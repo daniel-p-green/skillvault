@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 
 import type { Capability, DiffReport, FileDiff, Finding, Receipt } from '../contracts.js';
 import { CONTRACT_VERSION } from '../contracts.js';
+import { comparePathBytes } from '../bundle/hashing.js';
 import { generateReceipt } from './receipt.js';
 import { nowIso } from './time.js';
 
@@ -57,7 +58,7 @@ function fileDiffs(aFiles: ReceiptLike['files'], bFiles: ReceiptLike['files']): 
   const aByPath = new Map(aFiles.map((f) => [f.path, f] as const));
   const bByPath = new Map(bFiles.map((f) => [f.path, f] as const));
 
-  const allPaths = Array.from(new Set([...aByPath.keys(), ...bByPath.keys()])).sort((x, y) => x.localeCompare(y));
+  const allPaths = Array.from(new Set([...aByPath.keys(), ...bByPath.keys()])).sort(comparePathBytes);
 
   const diffs: FileDiff[] = [];
   let added = 0;
@@ -111,11 +112,11 @@ function capabilityDeltas(aCaps: Capability[], bCaps: Capability[]): { added: Ca
 
   const added = Array.from(bSet)
     .filter((c) => !aSet.has(c))
-    .sort((x, y) => x.localeCompare(y));
+    .sort(comparePathBytes);
 
   const removed = Array.from(aSet)
     .filter((c) => !bSet.has(c))
-    .sort((x, y) => x.localeCompare(y));
+    .sort(comparePathBytes);
 
   return { added, removed };
 }
@@ -135,11 +136,11 @@ function findingDeltas(aFindings: Finding[], bFindings: Finding[]): { added: str
 
   const added = Array.from(bSet)
     .filter((k) => !aSet.has(k))
-    .sort((x, y) => x.localeCompare(y));
+    .sort(comparePathBytes);
 
   const removed = Array.from(aSet)
     .filter((k) => !bSet.has(k))
-    .sort((x, y) => x.localeCompare(y));
+    .sort(comparePathBytes);
 
   return { added, removed };
 }

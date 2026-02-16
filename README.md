@@ -4,7 +4,7 @@ Local-first trust receipts + deterministic policy gating for **SKILL.md bundles*
 
 v0.1 decisions:
 - **SKILL.md bundles only** (exactly one `SKILL.md`/`skill.md` manifest)
-- Receipts are **offline-verifiable by deterministic hashing** (no signatures in v0.1)
+- Receipts are **Ed25519-signed** and offline-verifiable by deterministic hashing
 - Scanning/scoring is **deterministic + rule-based** (no LLM scoring path)
 
 ## Requirements
@@ -39,13 +39,13 @@ node packages/cli/dist/cli.js scan <bundle_dir|bundle.zip> --format table
 Generate a receipt:
 
 ```bash
-node packages/cli/dist/cli.js receipt <bundle_dir|bundle.zip> --out receipt.json
+node packages/cli/dist/cli.js receipt <bundle_dir|bundle.zip> --signing-key ed25519-private.pem --out receipt.json
 ```
 
 Verify a bundle matches a receipt (offline):
 
 ```bash
-node packages/cli/dist/cli.js verify <bundle_dir|bundle.zip> --receipt receipt.json --offline --format table
+node packages/cli/dist/cli.js verify <bundle_dir|bundle.zip> --receipt receipt.json --pubkey ed25519-public.pem --offline --format table
 ```
 
 Apply a policy gate:
@@ -80,6 +80,8 @@ node packages/cli/dist/cli.js scan <bundle> --format json --deterministic
 - Policy schema: [`docs/policy.md`](./docs/policy.md)
 - Risk scoring rubric: [`docs/scoring.md`](./docs/scoring.md)
 - JSON output contracts: [`docs/schemas.md`](./docs/schemas.md)
+- Signing + keyring usage: [`docs/signing.md`](./docs/signing.md)
+- Deterministic mode + goldens: [`docs/deterministic.md`](./docs/deterministic.md)
 - PRD: [`docs/PRD.md`](./docs/PRD.md)
 
 ## Scripts

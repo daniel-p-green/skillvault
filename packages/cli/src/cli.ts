@@ -41,16 +41,16 @@ export async function main(argv = process.argv): Promise<number> {
       describe: 'Freeze timestamps and enforce stable ordering for golden outputs'
     })
     .command(
-      'scan <bundle>',
+      'scan <bundle_dir_or_zip>',
       'Scan a bundle and emit a deterministic scan report',
       (cmd) =>
-        cmd.positional('bundle', {
+        cmd.positional('bundle_dir_or_zip', {
           type: 'string',
           describe: 'Path to bundle directory or bundle.zip',
           demandOption: true
         }),
       async (args) => {
-        const report = await scanBundle(String(args.bundle), { deterministic: Boolean(args.deterministic) });
+        const report = await scanBundle(String(args.bundle_dir_or_zip), { deterministic: Boolean(args.deterministic) });
 
         if (args.format === 'table') {
           const lines: string[] = [];
@@ -79,16 +79,28 @@ export async function main(argv = process.argv): Promise<number> {
     )
     .command(
       'receipt <bundle>',
-      'Generate an offline-verifiable receipt JSON for a bundle',
+      'Generate an offline-verifiable signed receipt JSON for a bundle',
       (cmd) =>
-        cmd.positional('bundle', {
-          type: 'string',
-          describe: 'Path to bundle directory or bundle.zip',
-          demandOption: true
-        }),
+        cmd
+          .positional('bundle', {
+            type: 'string',
+            describe: 'Path to bundle directory or bundle.zip',
+            demandOption: true
+          })
+          .option('signing-key', {
+            type: 'string',
+            demandOption: true,
+            describe: 'Path to Ed25519 private key PEM (PKCS#8)'
+          })
+          .option('key-id', {
+            type: 'string',
+            describe: 'Optional key identifier embedded in receipt.signature.key_id'
+          }),
       async (args) => {
         const receipt = await generateReceipt(String(args.bundle), {
           policyPath: args.policy ? String(args.policy) : undefined,
+          signingKeyPath: String(args.signingKey),
+          keyId: args.keyId ? String(args.keyId) : undefined,
           deterministic: Boolean(args.deterministic)
         });
 
@@ -116,6 +128,14 @@ export async function main(argv = process.argv): Promise<number> {
             demandOption: true,
             describe: 'Path to receipt.json'
           })
+          .option('pubkey', {
+            type: 'string',
+            describe: 'Path to Ed25519 public key PEM for signature verification'
+          })
+          .option('keyring', {
+            type: 'string',
+            describe: 'Directory of Ed25519 public keys (lookup by key_id/filename convention)'
+          })
           .option('offline', {
             type: 'boolean',
             default: false,
@@ -135,9 +155,20 @@ export async function main(argv = process.argv): Promise<number> {
           }
         }
 
+        const pubkeyPath = args.pubkey ? String(args.pubkey) : undefined;
+        const keyringDir = args.keyring ? String(args.keyring) : undefined;
+
+        if ((pubkeyPath && keyringDir) || (!pubkeyPath && !keyringDir)) {
+          console.error('verify requires exactly one of --pubkey <file> or --keyring <dir>');
+          process.exitCode = 2;
+          return;
+        }
+
         const { report, exitCode } = await verifyBundle(bundlePath, {
           receiptPath,
           policyPath: args.policy ? String(args.policy) : undefined,
+          pubkeyPath,
+          keyringDir,
           offline,
           deterministic: Boolean(args.deterministic)
         });

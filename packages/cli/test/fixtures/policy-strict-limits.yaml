@@ -1,0 +1,4 @@
+policy_version: v1
+constraints:
+  file_size_limit_bytes: 512
+  bundle_size_limit_bytes: 1024

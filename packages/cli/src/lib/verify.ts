@@ -1,52 +1,94 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto';
 
-import type { Finding, PolicyDecision, ReasonCode, VerifyReport } from '../contracts.js';
+import type { Finding, PolicyDecision, ReasonCode, Receipt, VerifyReport } from '../contracts.js';
 import { CONTRACT_VERSION } from '../contracts.js';
 import { decidePolicy } from './policy.js';
 import { readBundle } from './bundle.js';
-import { bundleSha256FromEntries, sha256Hex } from './hash.js';
 import { nowIso } from './time.js';
 import { loadPolicyV1 } from './policy-loader.js';
 import type { PolicyProfileV1 } from '../policy-v1.js';
+import { detectManifestFromEntries } from '../manifest/manifest.js';
+import { tokenCountNormalized } from '../text/normalize.js';
+import { hashBundleFiles, computeBundleSha256 } from '../bundle/hashing.js';
+import { canonicalJsonBytes } from '../util/canonicalJson.js';
 
 export interface VerifyOptions {
   receiptPath: string;
   policyPath?: string;
+  pubkeyPath?: string;
+  keyringDir?: string;
   offline: boolean;
   deterministic: boolean;
-}
-
-interface MinimalReceipt {
-  contract_version?: string;
-  bundle_sha256: string;
-  files: Array<{ path: string; sha256: string; size: number }>;
-  manifest?: { path: string; sha256: string; size: number };
-  scan?: {
-    capabilities?: string[];
-    risk_score?: { base_risk: number; change_risk: number; policy_delta: number; total: number };
-  };
 }
 
 function addFinding(findings: Finding[], code: ReasonCode, severity: Finding['severity'], message: string, extra?: Partial<Finding>): void {
   findings.push({ code, severity, message, ...extra });
 }
 
-function isManifestPath(p: string): boolean {
-  return p === 'SKILL.md' || p === 'skill.md';
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function normalizeTextForTokenCount(input: string): string {
-  // For deterministic token count only; hashing uses raw bytes.
-  return input.normalize('NFC').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+function isFileEntry(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.path === 'string'
+    && typeof value.sha256 === 'string'
+    && typeof value.size === 'number';
 }
 
-function tokenCount(text: string): number {
-  const norm = normalizeTextForTokenCount(text);
-  const parts = norm.split(/\s+/g).filter(Boolean);
-  return parts.length;
+function validateReceiptSchema(parsed: unknown): { receipt?: Receipt; errorFinding?: Finding } {
+  if (!isRecord(parsed)) {
+    return {
+      errorFinding: {
+        code: 'RECEIPT_SCHEMA_INVALID',
+        severity: 'error',
+        message: 'Receipt must be a JSON object'
+      }
+    };
+  }
+
+  if (typeof parsed.contract_version !== 'string'
+    || typeof parsed.bundle_sha256 !== 'string'
+    || !Array.isArray(parsed.files)
+    || !parsed.files.every(isFileEntry)
+    || !isRecord(parsed.scan)
+    || !isRecord(parsed.policy)) {
+    return {
+      errorFinding: {
+        code: 'RECEIPT_SCHEMA_INVALID',
+        severity: 'error',
+        message: 'Receipt missing required fields or has invalid field types'
+      }
+    };
+  }
+
+  if (!isRecord(parsed.signature)) {
+    return {
+      errorFinding: {
+        code: 'RECEIPT_SCHEMA_INVALID',
+        severity: 'error',
+        message: 'Receipt signature object is required for verify'
+      }
+    };
+  }
+
+  const signature = parsed.signature;
+  if (signature.alg !== 'ed25519' || typeof signature.payload_sha256 !== 'string' || typeof signature.sig !== 'string') {
+    return {
+      errorFinding: {
+        code: 'RECEIPT_SCHEMA_INVALID',
+        severity: 'error',
+        message: 'Receipt signature must include alg=ed25519, payload_sha256, and sig'
+      }
+    };
+  }
+
+  return { receipt: parsed as unknown as Receipt };
 }
 
-async function readReceipt(receiptPath: string): Promise<{ receipt?: MinimalReceipt; errorFinding?: Finding }> {
+async function readReceipt(receiptPath: string): Promise<{ receipt?: Receipt; errorFinding?: Finding }> {
   let raw: string;
   try {
     raw = await fs.readFile(receiptPath, 'utf8');
@@ -75,33 +117,10 @@ async function readReceipt(receiptPath: string): Promise<{ receipt?: MinimalRece
     };
   }
 
-  if (!parsed || typeof parsed !== 'object') {
-    return {
-      errorFinding: {
-        code: 'RECEIPT_PARSE_ERROR',
-        severity: 'error',
-        message: 'Receipt JSON must be an object'
-      }
-    };
-  }
-
-  const r = parsed as any;
-  if (typeof r.bundle_sha256 !== 'string' || !Array.isArray(r.files)) {
-    return {
-      errorFinding: {
-        code: 'RECEIPT_PARSE_ERROR',
-        severity: 'error',
-        message: 'Receipt JSON missing required fields: bundle_sha256, files'
-      }
-    };
-  }
-
-  return { receipt: r as MinimalReceipt };
+  return validateReceiptSchema(parsed);
 }
 
 function selectPolicyProfile(policy: any): PolicyProfileV1 {
-  // v0.1: no profile selection flag yet. Use base profile.
-  // Later, export/gate may specify strict_v0 profiles.
   return {
     gates: policy?.gates,
     capabilities: policy?.capabilities,
@@ -114,6 +133,59 @@ function policyDecisionFromProfile(profile: PolicyProfileV1 | undefined, risk_sc
     risk_score,
     gates: profile?.gates
   });
+}
+
+function resolveKeyringCandidates(keyringDir: string, keyId?: string): string[] {
+  if (!keyId) return [];
+  const safeId = keyId.replace(/[^a-zA-Z0-9._-]/g, '');
+  const base = path.resolve(keyringDir);
+  return [
+    path.join(base, safeId),
+    path.join(base, `${safeId}.pem`),
+    path.join(base, `${safeId}.pub`),
+    path.join(base, `${safeId}.public.pem`),
+    path.join(base, `${safeId}.ed25519.pub`)
+  ];
+}
+
+async function resolvePublicKeyPem(opts: VerifyOptions, keyId?: string): Promise<{ pem?: string; source?: string }> {
+  if (opts.pubkeyPath) {
+    const pem = await fs.readFile(opts.pubkeyPath, 'utf8');
+    return { pem, source: opts.pubkeyPath };
+  }
+
+  if (!opts.keyringDir) return {};
+
+  const candidates = resolveKeyringCandidates(opts.keyringDir, keyId);
+  for (const candidate of candidates) {
+    try {
+      const pem = await fs.readFile(candidate, 'utf8');
+      return { pem, source: candidate };
+    } catch {
+      // continue
+    }
+  }
+
+  return {};
+}
+
+function verifyReceiptSignature(receipt: Receipt, publicKeyPem: string): { valid: boolean; payloadSha256Hex: string } {
+  const { signature } = receipt;
+  const unsignedPayload: Receipt = {
+    ...receipt,
+    signature: undefined
+  };
+  const payloadBytes = canonicalJsonBytes(unsignedPayload);
+  const payloadSha256Hex = createHash('sha256').update(payloadBytes).digest('hex');
+
+  if (payloadSha256Hex !== signature!.payload_sha256) {
+    return { valid: false, payloadSha256Hex };
+  }
+
+  const sigBytes = Buffer.from(signature!.sig, 'base64');
+  const publicKey = createPublicKey(publicKeyPem);
+  const valid = cryptoVerify(null, payloadBytes, publicKey, sigBytes);
+  return { valid, payloadSha256Hex };
 }
 
 export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Promise<{ report: VerifyReport; exitCode: number }> {
@@ -140,22 +212,16 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
     };
   }
 
-  // Load policy.v1 (optional).
   const loadedPolicy = await loadPolicyV1(opts.policyPath);
   const profile = loadedPolicy ? selectPolicyProfile(loadedPolicy) : undefined;
 
   const risk_score = receipt.scan?.risk_score ?? { base_risk: 0, change_risk: 0, policy_delta: 0, total: 0 };
   const policy = policyDecisionFromProfile(profile, risk_score);
 
-  // Recompute hashes.
   const bundle = await readBundle(pathOrZip);
-  const computedFiles = bundle.files
-    .map((f) => ({ path: f.path, size: f.bytes.byteLength, sha256: sha256Hex(f.bytes) }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+  const computedFiles = hashBundleFiles(bundle.files);
+  const bundle_sha256 = computeBundleSha256(computedFiles);
 
-  const bundle_sha256 = bundleSha256FromEntries(computedFiles.map((f) => ({ path: f.path, sha256: f.sha256 })));
-
-  // Integrity checks vs receipt.
   const receiptFiles = [...receipt.files].sort((a, b) => a.path.localeCompare(b.path));
   const receiptByPath = new Map(receiptFiles.map((f) => [f.path, f] as const));
   const computedByPath = new Map(computedFiles.map((f) => [f.path, f] as const));
@@ -186,18 +252,40 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
     });
   }
 
-  // Constraints enforcement (policy.constraints).
+  const { pem: pubkeyPem, source: keySource } = await resolvePublicKeyPem(opts, receipt.signature?.key_id);
+  if (!pubkeyPem) {
+    addFinding(findings, 'SIGNATURE_KEY_NOT_FOUND', 'error', 'Unable to resolve verification key for receipt signature', {
+      details: {
+        key_id: receipt.signature?.key_id,
+        keyring: opts.keyringDir
+      }
+    });
+  } else {
+    try {
+      const { valid, payloadSha256Hex } = verifyReceiptSignature(receipt, pubkeyPem);
+      if (!valid) {
+        addFinding(findings, 'SIGNATURE_INVALID', 'error', 'Receipt signature verification failed', {
+          details: {
+            key_source: keySource,
+            expected_payload_sha256: receipt.signature?.payload_sha256,
+            computed_payload_sha256: payloadSha256Hex
+          }
+        });
+      }
+    } catch (err) {
+      addFinding(findings, 'SIGNATURE_INVALID', 'error', 'Receipt signature verification failed', {
+        details: {
+          key_source: keySource,
+          error: err instanceof Error ? err.message : String(err)
+        }
+      });
+    }
+  }
+
   const constraints = profile?.constraints;
   if (constraints?.exactly_one_manifest) {
-    const manifestCandidates = computedFiles.filter((f) => isManifestPath(f.path));
-    if (manifestCandidates.length !== 1) {
-      addFinding(
-        findings,
-        'CONSTRAINT_MANIFEST_COUNT',
-        'error',
-        `Expected exactly one manifest (SKILL.md or skill.md) in bundle root; found ${manifestCandidates.length}`
-      );
-    }
+    const { findings: manifestFindings } = detectManifestFromEntries(computedFiles);
+    findings.push(...manifestFindings);
   }
 
   if (typeof constraints?.bundle_size_limit_bytes === 'number') {
@@ -221,10 +309,11 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
   }
 
   if (typeof constraints?.max_manifest_tokens_warn === 'number' || typeof constraints?.max_manifest_tokens_fail === 'number') {
-    const manifest = bundle.files.find((f) => isManifestPath(f.path));
+    const manifestPath = detectManifestFromEntries(computedFiles).manifest?.path;
+    const manifest = manifestPath ? bundle.files.find((f) => f.path === manifestPath) : undefined;
     if (manifest) {
       const text = new TextDecoder('utf-8', { fatal: false }).decode(manifest.bytes);
-      const tokens = tokenCount(text);
+      const tokens = tokenCountNormalized(text);
 
       if (typeof constraints.max_manifest_tokens_warn === 'number' && tokens > constraints.max_manifest_tokens_warn) {
         addFinding(findings, 'CONSTRAINT_TOKEN_LIMIT_WARN', 'warn', `Manifest token count ${tokens} exceeds warn threshold ${constraints.max_manifest_tokens_warn}`, {
@@ -242,7 +331,6 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
     }
   }
 
-  // Capability rules (policy.capabilities).
   const caps = Array.isArray(receipt.scan?.capabilities) ? [...receipt.scan.capabilities] : [];
   caps.sort();
 
@@ -259,7 +347,6 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
       }
 
       if (mode === 'require_approval') {
-        // v0.1: approvals are not implemented; treat as missing.
         addFinding(findings, 'REQUIRED_APPROVAL_MISSING', 'error', `Policy requires approval for capability: ${cap}`, {
           details: { capability: cap, mode }
         });
@@ -267,7 +354,6 @@ export async function verifyBundle(pathOrZip: string, opts: VerifyOptions): Prom
     }
   }
 
-  // If the policy decision itself includes any errors, count as policy violation.
   for (const f of policy.findings) {
     if (f.severity === 'error') {
       addFinding(findings, 'POLICY_VIOLATION', 'error', f.message, { details: { wrapped_policy_code: f.code } });

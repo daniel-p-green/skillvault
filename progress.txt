@@ -7,11 +7,25 @@ Started: 2026-02-10 19:07 America/Chicago
 - Keep JSON contract fields explicitly versioned (`contract_version`) and export stable constants (e.g., `CONTRACT_VERSION`, `ReasonCodes`) to prevent silent drift.
 - For contract stability tests in Vitest, prefer explicit list equality (not snapshots) so additive-only changes are intentional.
 - When testing a yargs CLI by calling `main()` multiple times in one process, reset `process.exitCode` at the start of `main()` to avoid exit-code leakage between tests.
+- For deterministic diffs and cross-platform stability, sort file paths and delta string keys with bytewise UTF-8 comparison (`comparePathBytes`) instead of locale-aware collation.
 
 - Deterministic goldens: centralize frozen timestamp in a single exported constant (e.g., `DETERMINISTIC_CREATED_AT_ISO`) and reuse it across scan/receipt/verify outputs.
-- Bundle hashing: compute `bundle_sha256` from sorted `path + \0 + file_sha256 + \0` to stay platform-independent and avoid JSON-serialization drift.
+- Bundle hashing: compute `bundle_sha256` from sorted `path + '\n' + file_sha256 + '\n'`, with bytewise UTF-8 path sorting for deterministic cross-input hashes (dir vs zip).
 - Multi-input commands (bundle OR receipt): use a `receiptFromInput()` helper that tries to parse receipt JSON first, otherwise falls back to `generateReceipt()` on the bundle; keep ordering + keys deterministic.
 - Golden regression tests: commit deterministic CLI JSON outputs under `packages/cli/test/goldens/**` and compare byte-for-byte in Vitest to catch nondeterministic drift.
+- Contract evolution pattern: export per-command contract IDs (`skillvault.<command>.v1`) from `contracts.ts` and assert their literal values in tests.
+- Canonical JSON for signing/goldens: recursively sort object keys (leave array order unchanged) and serialize without whitespace to produce byte-stable UTF-8 payloads.
+- Shared trust helpers live in `src/manifest/*` and `src/text/*`; use them across scan/verify/gate/export to keep manifest findings and normalization/token behavior deterministic.
+- Policy parsing pattern: keep one strict parser (`src/policy/policy.ts`) that merges validated YAML overlays onto a stable `DEFAULT_POLICY_V1`, so omitted `--policy` behavior is deterministic across commands.
+- Capability inference pattern: keep a fixed rule-map module (`src/scan/capabilities.ts`) with path/content regexes over normalized text, then dedupe + lexicographically sort capabilities for stable receipts/gates.
+- Risk scoring pattern: compute `risk_score` through a single pure helper (`src/scan/scoring.ts`) that clamps components and total deterministically, then reuse scan output in receipt/verify/gate.
+- Gate reporting pattern: when policy gates fail, surface the original policy reason codes (`POLICY_MAX_RISK_EXCEEDED`, `POLICY_VERDICT_NOT_ALLOWED`) directly in gate findings instead of wrapping them, so CI can assert stable codes.
+- CLI output tests should prefer `--out <file>` + file assertions to avoid brittle stdout interception and keep JSON/table checks deterministic.
+- Receipt signing pattern: compute `payload_sha256` over canonical JSON bytes of the unsigned receipt (sorted keys, no whitespace), then Ed25519-sign those exact bytes and store signature as base64.
+- Signature verification pattern: canonicalize the same unsigned receipt payload bytes (receipt with `signature` removed), compare computed payload hash to `signature.payload_sha256`, then Ed25519-verify using either `--pubkey` or keyring lookup by `key_id`.
+- On macOS case-insensitive filesystems, keep multi-manifest fixtures as `.zip` inputs (`SKILL.md` + `skill.md`) to test exact-manifest-count constraints deterministically.
+- Golden drift checks should be runnable both in CI and locally via one script (`scripts/test-goldens.sh`) with explicit `--update` mode for controlled regeneration.
+- Documentation regression tests live in `packages/cli/test/docs-smoke.test.ts`; keep assertions keyword-based (commands/flags/critical terms) to catch contract-doc drift without snapshot churn.
 
 ---
 
@@ -137,7 +151,6 @@ Started: 2026-02-10 19:07 America/Chicago
   - `.github/workflows/ci.yml`
 - **Learnings:** Keep deterministic goldens as literal CLI output strings (pretty JSON + trailing newline) so diffs are immediately actionable.
 ---
-
 ## 2026-02-11 21:24 - US-016: Add CI workflow to enforce typecheck, tests, and golden determinism
 - Ensured golden tests are non-destructive by default, and only regenerate committed goldens when `REGEN_GOLDENS=1`.
 - Added explicit Vitest coverage for the golden harness behavior (no-regenerate default + regen flag).
@@ -157,4 +170,210 @@ Started: 2026-02-10 19:07 America/Chicago
   - `docs/{cli,policy,scoring,PRD}.md`
   - `packages/cli/test/docs-smoke.test.ts`
 - **Learnings:** For doc smoke tests, keep assertions string-based (command names + required files) rather than snapshots so future doc edits don’t cause noisy golden churn.
+---
+## 2026-02-15 14:40 - US-001: Define v0.1 JSON contracts: scan.v1 + receipt.v1 + verify/gate/diff/export
+- Added explicit contract identifier exports in `contracts.ts` for each CLI output surface: `skillvault.scan.v1`, `skillvault.receipt.v1`, `skillvault.verify.v1`, `skillvault.gate.v1`, `skillvault.diff.v1`, `skillvault.export.v1`.
+- Extended receipt contract with signed envelope schema: `signature: { alg: 'ed25519', key_id?, payload_sha256, sig }`.
+- Added additive-only reason codes for signature/receipt schema failures: `RECEIPT_SCHEMA_INVALID`, `SIGNATURE_INVALID`, `SIGNATURE_KEY_NOT_FOUND`.
+- Moved `ExportReport` contract shape into shared `contracts.ts` and updated export lib to consume it.
+- Added contract tests validating new contract-id constants and updated stable ReasonCodes list.
+- Files changed:
+  - `packages/cli/src/contracts.ts`
+  - `packages/cli/src/lib/export.ts`
+  - `packages/cli/test/contracts.test.ts`
+- **Learnings:** Keep per-command contract identifiers as exported constants in one module so tests and CLI outputs can version independently from a single numeric `contract_version` string.
+---
+## 2026-02-15 14:43 - US-002: Implement deterministic clock + canonical JSON serialization utilities
+- Added `src/util/determinism.ts` with frozen deterministic timestamp constant and helper for runtime/deterministic `created_at` generation.
+- Added `src/util/canonicalJson.ts` with canonical serializer + UTF-8 byte encoder for deterministic payload hashing/signing inputs.
+- Updated `src/lib/time.ts` to delegate to the new determinism utility while preserving existing API usage across scan/receipt/verify/gate/diff/export.
+- Added unit tests for canonical nested key ordering, byte-stable UTF-8 output, and deterministic/non-deterministic clock behavior.
+- Files changed:
+  - `packages/cli/src/util/determinism.ts`
+  - `packages/cli/src/util/canonicalJson.ts`
+  - `packages/cli/src/lib/time.ts`
+  - `packages/cli/test/determinism.test.ts`
+- **Learnings:** keep deterministic primitives (`created_at`, canonical JSON bytes) in dedicated utility modules so signing, goldens, and report generation reuse one implementation.
+---
+## 2026-02-15 14:53 - US-003: Bundle hashing: per-file sha256 + bundle_sha256 from sorted paths+hashes
+- Added a dedicated hashing module at `src/bundle/hashing.ts` that:
+  - hashes each bundle file over raw bytes into deterministic `FileEntry[]` (`path`, `size`, `sha256`)
+  - sorts by bytewise UTF-8 path order
+  - computes `bundle_sha256` from canonical `path + '\n' + file_sha256 + '\n'` concatenation.
+- Updated scan flow to use the new hashing module directly.
+- Kept `lib/hash.ts` as a compatibility wrapper for existing call sites while aligning bundle hash semantics.
+- Added tests validating per-file hashing and equivalence between directory and zip inputs.
+- Regenerated deterministic goldens to reflect updated bundle hash canonicalization.
+- Files changed:
+  - `packages/cli/src/bundle/hashing.ts`
+  - `packages/cli/src/lib/hash.ts`
+  - `packages/cli/src/lib/scan.ts`
+  - `packages/cli/test/bundle-hashing.test.ts`
+  - `packages/cli/test/goldens/**`
+- **Learnings:** when hash contracts change, golden fixtures catch downstream drift immediately; keep canonicalization logic centralized and reused by scan/receipt/verify/diff paths.
+---
+## 2026-02-15 15:05 - US-004: Manifest detection + text normalization (UTF-8 NFC + newline normalization)
+- Added `packages/cli/src/manifest/manifest.ts` for deterministic root-manifest detection (`SKILL.md`/`skill.md`) with stable `CONSTRAINT_MANIFEST_COUNT` findings when count != 1.
+- Added `packages/cli/src/text/normalize.ts` for deterministic text normalization (UTF-8 NFC + `\n` newline normalization) and normalized token counting for analysis-only paths.
+- Updated scan/verify/gate/export flows to reuse manifest detection and normalization helpers while preserving raw-byte hashing behavior.
+- Added tests covering manifest count violations, root-manifest selection, normalization behavior, and proof that manifest SHA-256 comes from raw bytes (not normalized text).
+- Files changed:
+  - `packages/cli/src/manifest/manifest.ts`
+  - `packages/cli/src/text/normalize.ts`
+  - `packages/cli/src/lib/{scan,verify,gate,export}.ts`
+  - `packages/cli/test/manifest-normalize.test.ts`
+- **Learnings:** centralize manifest-count and normalization rules in shared helpers so scan/verify/gate/export stay consistent and reason-code output remains stable.
+---
+## 2026-02-15 15:14 - US-005: Policy.v1 YAML parsing + validation + defaults
+- Implemented strict policy.v1 YAML parser/loader in `packages/cli/src/policy/policy.ts` with typed validation for gates, capability rules, constraints, and profile overlays.
+- Added deterministic built-in `DEFAULT_POLICY_V1` and made `loadPolicyV1()` return it when `--policy` is omitted.
+- Standardized parse and validation failures to throw `PolicyLoadError` with stable reason `POLICY_PARSE_ERROR` and structured `details`.
+- Replaced legacy loader implementation with a compatibility re-export from the new policy module.
+- Expanded policy tests to cover defaults, no-policy loading behavior, invalid YAML errors, and schema validation errors.
+- Files changed:
+  - `packages/cli/src/policy/policy.ts`
+  - `packages/cli/src/lib/policy-loader.ts`
+  - `packages/cli/test/policy-v1.test.ts`
+- **Learnings:** Merge user policy as a validated overlay over a stable default object to keep CLI behavior deterministic when policy files are absent or partial.
+---
+## 2026-02-15 15:24 - US-006: Deterministic capability inference via rule map
+- Implemented deterministic capability inference module in `packages/cli/src/scan/capabilities.ts` using a fixed path/content regex rule map for `network`, `exec`, `writes`, `reads`, `secrets`, and `dynamic_code`.
+- Updated scan pipeline to infer capabilities from bundle files using normalized text (`UTF-8 NFC` + normalized newlines), while preserving raw bytes for hashing.
+- Ensured inference output is deduped and sorted deterministically.
+- Added focused unit tests for sorted/deduped inference, deterministic behavior across file-order permutations, and normalized text matching.
+- Regenerated impacted deterministic goldens (`malicious-skill` scan/receipt + diff golden) to reflect new inferred capability output.
+- Files changed:
+  - `packages/cli/src/scan/capabilities.ts`
+  - `packages/cli/src/lib/scan.ts`
+  - `packages/cli/test/capabilities.test.ts`
+  - `packages/cli/test/goldens/malicious-skill/scan.json`
+  - `packages/cli/test/goldens/malicious-skill/receipt.json`
+  - `packages/cli/test/goldens/diff/benign-vs-malicious.json`
+- **Learnings:** treat capability inference as pure, rule-based analysis over normalized text with deterministic file ordering to keep scan/receipt/diff fixtures stable.
+---
+## 2026-02-15 15:33 - US-007: Deterministic risk scoring engine (base_risk + change_risk + policy_delta)
+- Added deterministic scoring module `packages/cli/src/scan/scoring.ts`:
+  - capability-weighted `base_risk` from deduped/sorted inferred capabilities
+  - finding-severity additive risk (`info`/`warn`/`error`)
+  - explicit `change_risk` and `policy_delta` inputs
+  - deterministic clamping and integer normalization with `total` constrained to `[0,100]`
+- Updated scan pipeline to compute `risk_score` via `computeRiskScore()` instead of hardcoded zero values.
+- Added scoring unit tests for determinism, clamping behavior, and exact PASS/WARN/FAIL threshold mapping.
+- Regenerated malicious fixture scan/receipt goldens to reflect non-zero deterministic `base_risk`.
+- Files changed:
+  - `packages/cli/src/scan/scoring.ts`
+  - `packages/cli/src/lib/scan.ts`
+  - `packages/cli/test/scoring.test.ts`
+  - `packages/cli/test/goldens/malicious-skill/{scan,receipt}.json`
+- **Learnings:** keep scoring as a pure function over capabilities/findings + explicit deltas so scan/receipt/verify/gate inherit the same deterministic risk semantics.
+---
+## 2026-02-15 15:44 - US-008: Implement `skillvault scan` command with JSON/table output and `--out`
+- Updated CLI command signature to `scan <bundle_dir_or_zip>` and wired positional parsing to that explicit input contract.
+- Added command-level behavior tests for scan:
+  - deterministic JSON output written via `--out`
+  - `.zip` input support and deterministic parity with directory input (same `bundle_sha256` + file list)
+  - stable table output written via `--out`
+- Kept `--policy` accepted on scan (shared parser option) while preserving deterministic scan pipeline behavior.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/test/cli-options.test.ts`
+- **Learnings:** for CLI commands with multiple output modes, asserting file outputs via `--out` provides stable tests for both JSON and table without stdout mocking.
+---
+## 2026-02-15 15:56 - US-009: Receipt creation: `skillvault receipt` generates receipt.v1 and signs with Ed25519
+- Implemented signed receipt generation for `skillvault receipt` with required `--signing-key` and optional `--key-id` flags.
+- Added deterministic signing flow in `lib/receipt.ts`: canonical unsigned receipt JSON -> sha256 payload digest -> Ed25519 signature; embedded as `receipt.signature`.
+- Added fixture Ed25519 keys under `packages/cli/test/fixtures/keys` and regenerated deterministic receipt goldens.
+- Updated CLI/README/docs command references to document signing key requirements and expected PEM PKCS#8 format.
+- Files changed:
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/src/lib/receipt.ts`
+  - `packages/cli/test/{receipt,cli-options,diff,goldens}.test.ts`
+  - `packages/cli/test/fixtures/keys/{ed25519-private.pem,ed25519-public.pem}`
+  - `packages/cli/test/goldens/{benign-skill,malicious-skill}/receipt.json`
+  - `docs/cli.md`
+  - `README.md`
+- **Learnings:** keep signing payload strictly to canonicalized unsigned receipt bytes; using the same byte source for both `payload_sha256` and `crypto.sign()` avoids subtle verification drift.
+---
+## 2026-02-15 16:06 - US-010: Receipt verification: `skillvault verify` recomputes hashes + verifies signature offline
+- Implemented signed-receipt verification in `verify` flow with strict schema checks and stable failure codes.
+- Added CLI verify key options: exactly one of `--pubkey <file>` or `--keyring <dir>` is now required.
+- Verify now performs deterministic key resolution (`key_id` + filename conventions), canonical unsigned-payload hashing, payload hash comparison, and Ed25519 signature verification.
+- Added/updated tamper coverage:
+  - bundle-file tamper -> hash mismatch codes
+  - receipt payload tamper -> `SIGNATURE_INVALID`
+  - keyring lookup by `key_id` works
+- Updated golden tests to include verify key inputs.
+- Files changed:
+  - `packages/cli/src/lib/verify.ts`
+  - `packages/cli/src/cli.ts`
+  - `packages/cli/test/verify.test.ts`
+  - `packages/cli/test/goldens.test.ts`
+- **Learnings:** verify should re-create the exact canonical unsigned receipt bytes used at signing time (remove `signature`, sort keys) before both hash comparison and signature verification.
+---
+
+## 2026-02-15 16:13 - US-011: Policy gating: `skillvault gate` evaluates a bundle or receipt
+- Updated gate engine to surface policy gate failures directly from policy decision findings, preserving stable reason codes instead of wrapping them.
+- Added policy fixtures to exercise explicit gate failures:
+  - `policy-max-risk-zero.yaml` for `POLICY_MAX_RISK_EXCEEDED`
+  - `policy-allow-warn-only.yaml` for `POLICY_VERDICT_NOT_ALLOWED`
+- Extended gate command tests to assert both stable reason codes and failure exit behavior.
+- Files changed:
+  - `packages/cli/src/lib/gate.ts`
+  - `packages/cli/test/gate.test.ts`
+  - `packages/cli/test/fixtures/policy-max-risk-zero.yaml`
+  - `packages/cli/test/fixtures/policy-allow-warn-only.yaml`
+- **Learnings:** Preserve first-class policy finding codes in gate outputs so CI can key off canonical reason codes without translation layers.
+---
+## 2026-02-15 16:24 - US-012: Diff: `skillvault diff` compares two bundles/receipts deterministically
+- Updated diff ordering logic to use bytewise UTF-8 sorting (`comparePathBytes`) for file paths and delta keys, removing locale-dependent ordering behavior.
+- Expanded diff tests to explicitly cover all required input combinations: bundle-vs-bundle, receipt-vs-receipt, and bundle-vs-receipt.
+- Verified deterministic output metadata and summary counts for bundle-vs-receipt comparisons.
+- Files changed:
+  - `packages/cli/src/lib/diff.ts`
+  - `packages/cli/test/diff.test.ts`
+- **Learnings:** Reusing a single bytewise comparator across hashing and diffing prevents subtle cross-locale drift in golden JSON ordering.
+---
+## 2026-02-15 16:33 - US-013: Export: `skillvault export` creates bundle.zip under strict_v0 constraints
+- Updated export path ordering to use bytewise UTF-8 comparator (`comparePathBytes`) for deterministic zip entry ordering and post-write validation ordering.
+- Added regression test that asserts bytewise sort behavior for non-ASCII filenames (`z.txt` before `ä.txt`) to prevent locale-sensitive ordering drift.
+- Re-ran typecheck, build, and full test suite.
+- Files changed:
+  - `packages/cli/src/lib/export.ts`
+  - `packages/cli/test/export.test.ts`
+- **Learnings:** Reuse the same bytewise comparator across hash/diff/export flows so deterministic outputs remain stable across host locales.
+---
+## 2026-02-15 16:44 - US-014: Fixtures, goldens, and deterministic-mode CI for scan/receipt/verify/diff
+- Added missing fixture coverage under `packages/cli/test/fixtures`:
+  - bundle fixtures: `missing-manifest`, `oversized-skill`, `capability-triggers`, `multiple-manifest.zip`
+  - receipt fixtures: `fixtures/receipts/{benign-receipt,malicious-receipt}.json`
+  - strict limits policy fixture: `policy-strict-limits.yaml`
+- Added local golden-check script `scripts/test-goldens.sh` with `--update` mode and wired root scripts:
+  - `npm run test:goldens:check`
+  - `npm run test:goldens:update`
+- Expanded CI (`.github/workflows/ci.yml`) to run deterministic golden checks explicitly after tests.
+- Added regression tests for new fixtures and stable reason-code behavior in `packages/cli/test/fixtures-regression.test.ts`:
+  - missing manifest and multiple manifest reason-code checks
+  - oversized bundle verify failure with `CONSTRAINT_FILE_SIZE_LIMIT`
+  - capability-trigger fixture deterministic capability inference
+- **Learnings:** for multi-manifest fixture realism on macOS, zip fixtures are safer than directory fixtures because case-only filenames cannot coexist on default filesystems.
+---
+## 2026-02-15 16:54 - US-015: Documentation: CLI reference, schema docs, scoring rubric, signing notes
+- Updated `README.md` command examples/reference links for the full scan -> receipt -> verify -> gate -> diff -> export workflow, including verify key requirements.
+- Updated docs to match implemented v0.1 trust layer behavior:
+  - `docs/cli.md`: verify synopsis now requires `--pubkey` or `--keyring`, plus explicit signature hard-fail notes.
+  - `docs/schemas.md`: refreshed to reflect signed receipts (Ed25519), contract IDs, and current report fields.
+  - `docs/policy.md`: corrected policy source-of-truth path.
+- Added new documentation pages:
+  - `docs/signing.md`: signature payload model, Ed25519 key usage, keyring flow, and offline verify behavior.
+  - `docs/deterministic.md`: deterministic mode semantics and golden-check workflow (`test:goldens:check` / update path).
+- Extended docs smoke tests to enforce presence of new docs and critical trust-layer terms/flags (`--pubkey`, `--keyring`, signature coverage, deterministic golden workflow).
+- Files changed:
+  - `README.md`
+  - `docs/cli.md`
+  - `docs/policy.md`
+  - `docs/schemas.md`
+  - `docs/signing.md`
+  - `docs/deterministic.md`
+  - `packages/cli/test/docs-smoke.test.ts`
+- **Learnings:** keep doc smoke tests focused on required keywords/flags so they guard trust-contract drift (especially signing + verify UX) while staying resilient to normal prose edits.
 ---

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CONTRACT_DIFF_V1,
+  CONTRACT_EXPORT_V1,
+  CONTRACT_GATE_V1,
+  CONTRACT_RECEIPT_V1,
+  CONTRACT_SCAN_V1,
+  CONTRACT_VERIFY_V1,
   CONTRACT_VERSION,
   DEFAULT_THRESHOLDS,
   ReasonCodes,
@@ -10,6 +16,15 @@ import {
 describe('v0.1 JSON contracts', () => {
   it('exports a stable contract version', () => {
     expect(CONTRACT_VERSION).toBe('0.1');
+  });
+
+  it('exports explicit v1 contract ids for each command output', () => {
+    expect(CONTRACT_SCAN_V1).toBe('skillvault.scan.v1');
+    expect(CONTRACT_RECEIPT_V1).toBe('skillvault.receipt.v1');
+    expect(CONTRACT_VERIFY_V1).toBe('skillvault.verify.v1');
+    expect(CONTRACT_GATE_V1).toBe('skillvault.gate.v1');
+    expect(CONTRACT_DIFF_V1).toBe('skillvault.diff.v1');
+    expect(CONTRACT_EXPORT_V1).toBe('skillvault.export.v1');
   });
 
   it('uses the required verdict thresholds', () => {
@@ -41,6 +56,9 @@ describe('v0.1 JSON contracts', () => {
       'FILE_EXTRA',
       'RECEIPT_BUNDLE_HASH_MISMATCH',
       'RECEIPT_PARSE_ERROR',
+      'RECEIPT_SCHEMA_INVALID',
+      'SIGNATURE_INVALID',
+      'SIGNATURE_KEY_NOT_FOUND',
       'POLICY_MAX_RISK_EXCEEDED',
       'POLICY_VERDICT_NOT_ALLOWED',
       'POLICY_CAPABILITY_BLOCKED',

@@ -9,6 +9,13 @@ export const CONTRACT_VERSION = '0.1' as const;
 
 export type ContractVersion = typeof CONTRACT_VERSION;
 
+export const CONTRACT_SCAN_V1 = 'skillvault.scan.v1' as const;
+export const CONTRACT_RECEIPT_V1 = 'skillvault.receipt.v1' as const;
+export const CONTRACT_VERIFY_V1 = 'skillvault.verify.v1' as const;
+export const CONTRACT_GATE_V1 = 'skillvault.gate.v1' as const;
+export const CONTRACT_DIFF_V1 = 'skillvault.diff.v1' as const;
+export const CONTRACT_EXPORT_V1 = 'skillvault.export.v1' as const;
+
 export type OutputFormat = 'json' | 'table';
 
 export type Verdict = 'PASS' | 'WARN' | 'FAIL';
@@ -30,6 +37,11 @@ export const ReasonCodes = [
   'FILE_EXTRA',
   'RECEIPT_BUNDLE_HASH_MISMATCH',
   'RECEIPT_PARSE_ERROR',
+  'RECEIPT_SCHEMA_INVALID',
+
+  // Signature verification
+  'SIGNATURE_INVALID',
+  'SIGNATURE_KEY_NOT_FOUND',
 
   // Policy / gating
   'POLICY_MAX_RISK_EXCEEDED',
@@ -170,6 +182,13 @@ export interface ScanReport {
   findings: Finding[];
 }
 
+export interface ReceiptSignature {
+  alg: 'ed25519';
+  key_id?: string;
+  payload_sha256: string;
+  sig: string;
+}
+
 export interface Receipt {
   contract_version: ContractVersion;
   created_at: string;
@@ -191,6 +210,8 @@ export interface Receipt {
     findings: Finding[];
   };
   policy: PolicyDecision;
+  /** v0.1 signed receipt envelope (Ed25519). */
+  signature?: ReceiptSignature;
 }
 
 export interface VerifyReport {
@@ -262,4 +283,15 @@ export interface DiffReport {
     modified: number;
     unchanged: number;
   };
+}
+
+export interface ExportReport {
+  contract_version: ContractVersion;
+  created_at: string;
+  profile: string;
+  out_path: string;
+  bundle_sha256: string;
+  files: Array<{ path: string; size: number; sha256: string }>;
+  findings: Finding[];
+  validated: boolean;
 }
