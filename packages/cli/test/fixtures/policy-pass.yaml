@@ -1,0 +1,3 @@
+gates:
+  max_risk_score: 29
+  allow_verdicts: [PASS]
