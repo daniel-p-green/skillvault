@@ -186,6 +186,10 @@ export class SkillVaultManager {
   }
 
   setAdapterEnabled(id: string, enabled: boolean): { id: string; enabled: boolean } {
+    const exists = this.listAdapters().some((adapter) => adapter.id === id);
+    if (!exists) {
+      throw new Error(`Adapter not found: ${id}`);
+    }
     this.db.setAdapterEnabled(id, enabled, this.nowIso());
     return { id, enabled };
   }

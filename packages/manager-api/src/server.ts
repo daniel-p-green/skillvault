@@ -28,6 +28,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
   app.get('/adapters', async () => ({ adapters: manager.listAdapters() }));
 
+  app.get('/adapters/validate', async () => ({ issues: manager.validateAdapterPaths() }));
+
   app.post('/adapters/sync', async () => manager.syncAdapterSnapshot());
 
   app.post<{ Body: { id: string; enabled: boolean } }>('/adapters/toggle', async (request) => {

@@ -125,6 +125,10 @@ SkillVault is local-first and not a central registry. Trust still depends on you
 - `skillvault manager init`
 - `skillvault manager adapters list`
 - `skillvault manager adapters sync-snapshot`
+- `skillvault manager adapters enable`
+- `skillvault manager adapters disable`
+- `skillvault manager adapters override`
+- `skillvault manager adapters validate`
 - `skillvault manager import`
 - `skillvault manager inventory`
 - `skillvault manager deploy`

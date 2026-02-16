@@ -16,6 +16,15 @@ interface AdaptersResponse {
   adapters: Adapter[];
 }
 
+interface AdapterValidationIssue {
+  adapterId: string;
+  issue: string;
+}
+
+interface AdapterValidationResponse {
+  issues: AdapterValidationIssue[];
+}
+
 export function AdaptersPage() {
   const [filter, setFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
   const queryClient = useQueryClient();
@@ -25,10 +34,16 @@ export function AdaptersPage() {
     queryFn: () => apiGet<AdaptersResponse>('/adapters')
   });
 
+  const validationQuery = useQuery({
+    queryKey: ['adapters', 'validate'],
+    queryFn: () => apiGet<AdapterValidationResponse>('/adapters/validate')
+  });
+
   const toggleMutation = useMutation({
     mutationFn: (payload: { id: string; enabled: boolean }) => apiPost('/adapters/toggle', payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['adapters'] });
+      await queryClient.invalidateQueries({ queryKey: ['adapters', 'validate'] });
     }
   });
 
@@ -36,6 +51,7 @@ export function AdaptersPage() {
     mutationFn: () => apiPost('/adapters/sync'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['adapters'] });
+      await queryClient.invalidateQueries({ queryKey: ['adapters', 'validate'] });
     }
   });
 
@@ -54,9 +70,14 @@ export function AdaptersPage() {
           <button type="button" className={`chip ${filter === 'enabled' ? 'active' : ''}`} onClick={() => setFilter('enabled')}>Enabled</button>
           <button type="button" className={`chip ${filter === 'disabled' ? 'active' : ''}`} onClick={() => setFilter('disabled')}>Disabled</button>
         </div>
-        <button className="button secondary" type="button" onClick={() => syncMutation.mutate()}>
-          {syncMutation.isPending ? 'Syncing...' : 'Sync Snapshot'}
-        </button>
+        <div className="row">
+          <button className="button secondary" type="button" onClick={() => validationQuery.refetch()}>
+            {validationQuery.isFetching ? 'Validating...' : 'Validate Paths'}
+          </button>
+          <button className="button secondary" type="button" onClick={() => syncMutation.mutate()}>
+            {syncMutation.isPending ? 'Syncing...' : 'Sync Snapshot'}
+          </button>
+        </div>
       </div>
 
       <table className="table">
@@ -96,6 +117,32 @@ export function AdaptersPage() {
           ))}
         </tbody>
       </table>
+
+      <div className="stack-sm">
+        <h3>Path Diagnostics</h3>
+        {validationQuery.isLoading && <p className="table-subtle">Checking adapter paths...</p>}
+        {!validationQuery.isLoading && (validationQuery.data?.issues ?? []).length === 0 && (
+          <p className="table-subtle">No adapter path issues detected.</p>
+        )}
+        {!validationQuery.isLoading && (validationQuery.data?.issues ?? []).length > 0 && (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Adapter</th>
+                <th>Issue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(validationQuery.data?.issues ?? []).map((issue) => (
+                <tr key={`${issue.adapterId}:${issue.issue}`}>
+                  <td><code>{issue.adapterId}</code></td>
+                  <td>{issue.issue}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </PageShell>
   );
 }

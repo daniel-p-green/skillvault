@@ -80,6 +80,10 @@ skillvault manager init [--root <path>]
 ```bash
 skillvault manager adapters list [--root <path>] [--format json|table]
 skillvault manager adapters sync-snapshot [--root <path>]
+skillvault manager adapters enable <id> [--root <path>]
+skillvault manager adapters disable <id> [--root <path>]
+skillvault manager adapters override --file <adapter-spec.json> [--root <path>]
+skillvault manager adapters validate [--root <path>] [--format json|table]
 ```
 
 ### Import and inventory

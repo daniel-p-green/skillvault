@@ -72,6 +72,9 @@ describe('manager web app', () => {
           { id: 'openclaw', displayName: 'OpenClaw', projectPath: 'skills', globalPath: '~/.openclaw/skills', isEnabled: false }
         ]
       },
+      '/adapters/validate': {
+        issues: []
+      },
       '/skills/alpha-skill': {
         skill: {
           id: 'alpha-skill',

@@ -18,4 +18,19 @@ describe('manager api', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it('exposes adapter validation results', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'skillvault-manager-api-'));
+    const app = createServer({ rootDir: root });
+    try {
+      const response = await app.inject({ method: 'GET', url: '/adapters/validate' });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as { issues: Array<{ adapterId: string; issue: string }> };
+      expect(Array.isArray(body.issues)).toBe(true);
+      expect(body.issues).toEqual([]);
+    } finally {
+      await app.close();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

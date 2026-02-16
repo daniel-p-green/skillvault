@@ -6,7 +6,13 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 
 import { startServer } from '@skillvault/manager-api';
-import { SkillVaultManager, type InstallMode, type InstallScope, type TrustVerdict } from '@skillvault/manager-core';
+import {
+  SkillVaultManager,
+  type AdapterSpec,
+  type InstallMode,
+  type InstallScope,
+  type TrustVerdict
+} from '@skillvault/manager-core';
 import { generateReceipt } from './lib/receipt.js';
 import { scanBundle } from './lib/scan.js';
 import { verifyBundle, verifyReceiptSignatureOnly } from './lib/verify.js';
@@ -467,32 +473,140 @@ export async function main(argv = process.argv): Promise<number> {
             }
           )
           .command(
-            'adapters list',
-            'List known adapters and enablement state',
-            (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
-            async (args) => {
-              const root = requireManagerRoot(args);
-              const adapters = await withManager(root, async (manager) => manager.listAdapters());
-              if (args.format === 'table') {
-                const lines = [
-                  'id | enabled | projectPath | globalPath',
-                  ...adapters.map((adapter) => `${adapter.id} | ${adapter.isEnabled ? 'yes' : 'no'} | ${adapter.projectPath} | ${adapter.globalPath}`)
-                ];
-                await writeOutput(args, `${lines.join('\n')}\n`);
-                return;
-              }
-              await writeOutput(args, `${JSON.stringify({ adapters }, null, 2)}\n`);
-            }
-          )
-          .command(
-            'adapters sync-snapshot',
-            'Sync built-in + override adapter snapshot into manager storage',
-            (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
-            async (args) => {
-              const root = requireManagerRoot(args);
-              const result = await withManager(root, async (manager) => manager.syncAdapterSnapshot());
-              await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
-            }
+            'adapters',
+            'Manage adapter registry and adapter state',
+            (adaptersCmd) =>
+              adaptersCmd
+                .command(
+                  'list',
+                  'List known adapters and enablement state',
+                  (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const adapters = await withManager(root, async (manager) => manager.listAdapters());
+                    if (args.format === 'table') {
+                      const lines = [
+                        'id | enabled | projectPath | globalPath',
+                        ...adapters.map((adapter) => `${adapter.id} | ${adapter.isEnabled ? 'yes' : 'no'} | ${adapter.projectPath} | ${adapter.globalPath}`)
+                      ];
+                      await writeOutput(args, `${lines.join('\n')}\n`);
+                      return;
+                    }
+                    await writeOutput(args, `${JSON.stringify({ adapters }, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'sync-snapshot',
+                  'Sync built-in + override adapter snapshot into manager storage',
+                  (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const result = await withManager(root, async (manager) => manager.syncAdapterSnapshot());
+                    await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'enable <id>',
+                  'Enable an adapter target',
+                  (cmd) =>
+                    cmd
+                      .positional('id', {
+                        type: 'string',
+                        demandOption: true,
+                        describe: 'Adapter id'
+                      })
+                      .option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const result = await withManager(root, async (manager) => manager.setAdapterEnabled(String(args.id), true));
+                    await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'disable <id>',
+                  'Disable an adapter target',
+                  (cmd) =>
+                    cmd
+                      .positional('id', {
+                        type: 'string',
+                        demandOption: true,
+                        describe: 'Adapter id'
+                      })
+                      .option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const result = await withManager(root, async (manager) => manager.setAdapterEnabled(String(args.id), false));
+                    await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'override',
+                  'Add or replace a custom adapter override from JSON',
+                  (cmd) =>
+                    cmd
+                      .option('file', {
+                        type: 'string',
+                        demandOption: true,
+                        describe: 'Path to AdapterSpec JSON file'
+                      })
+                      .option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const filePath = String(args.file);
+                    const raw = await fs.readFile(filePath, 'utf8');
+                    const parsed = JSON.parse(raw) as Partial<AdapterSpec>;
+
+                    const validateString = (name: string, value: unknown): string => {
+                      if (typeof value !== 'string' || value.trim().length === 0) {
+                        throw new Error(`Invalid adapter override: ${name} must be a non-empty string`);
+                      }
+                      return value;
+                    };
+                    const validateStringArray = (name: string, value: unknown): string[] => {
+                      if (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== 'string' || entry.trim().length === 0)) {
+                        throw new Error(`Invalid adapter override: ${name} must be a non-empty string[]`);
+                      }
+                      return value as string[];
+                    };
+
+                    const spec: AdapterSpec = {
+                      id: validateString('id', parsed.id),
+                      displayName: validateString('displayName', parsed.displayName),
+                      projectPath: validateString('projectPath', parsed.projectPath),
+                      globalPath: validateString('globalPath', parsed.globalPath),
+                      detectionPaths: validateStringArray('detectionPaths', parsed.detectionPaths),
+                      manifestFilenames: validateStringArray('manifestFilenames', parsed.manifestFilenames),
+                      supportsSymlink: Boolean(parsed.supportsSymlink),
+                      supportsGlobal: Boolean(parsed.supportsGlobal),
+                      notes: typeof parsed.notes === 'string' ? parsed.notes : undefined
+                    };
+
+                    const root = requireManagerRoot(args);
+                    const result = await withManager(root, async (manager) => manager.addAdapterOverride(spec));
+                    await writeOutput(args, `${JSON.stringify(result, null, 2)}\n`);
+                  }
+                )
+                .command(
+                  'validate',
+                  'Validate adapter path configuration and manifest rules',
+                  (cmd) => cmd.option('root', { type: 'string', describe: 'Workspace root (defaults to cwd)' }),
+                  async (args) => {
+                    const root = requireManagerRoot(args);
+                    const issues = await withManager(root, async (manager) => manager.validateAdapterPaths());
+                    if (args.format === 'table') {
+                      if (issues.length === 0) {
+                        await writeOutput(args, 'ok\n');
+                      } else {
+                        const lines = ['adapterId | issue', ...issues.map((issue) => `${issue.adapterId} | ${issue.issue}`)];
+                        await writeOutput(args, `${lines.join('\n')}\n`);
+                      }
+                    } else {
+                      await writeOutput(args, `${JSON.stringify({ issues }, null, 2)}\n`);
+                    }
+                    process.exitCode = issues.length === 0 ? 0 : 1;
+                  }
+                )
+                .demandCommand(1, 'Provide an adapters subcommand'),
+            async () => {}
           )
           .command(
             ['import <bundle_dir_or_zip>', 'ingest <bundle_dir_or_zip>'],
