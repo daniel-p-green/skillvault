@@ -184,4 +184,64 @@ describe('skillvault manager CLI', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it('lists discovery sources and scans filesystem installs', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'skillvault-manager-sync-cli-'));
+    const importOut = path.join(root, 'import.json');
+    const deployOut = path.join(root, 'deploy.json');
+    const sourcesOut = path.join(root, 'sources.json');
+    const syncOut = path.join(root, 'sync.json');
+    const summaryOut = path.join(root, 'sync-summary.json');
+
+    try {
+      expect(await main(['node', 'skillvault', 'manager', 'init', '--root', root])).toBe(0);
+
+      expect(await main([
+        'node', 'skillvault', 'manager', 'import',
+        path.join(FIXTURES, 'benign-skill'),
+        '--root', root,
+        '--out', importOut
+      ])).toBe(0);
+
+      const imported = await readJsonFile<{ skillId: string }>(importOut);
+
+      expect(await main([
+        'node', 'skillvault', 'manager', 'deploy',
+        imported.skillId,
+        '--adapter', 'codex',
+        '--scope', 'project',
+        '--mode', 'symlink',
+        '--root', root,
+        '--out', deployOut
+      ])).toBe(0);
+
+      expect(await main([
+        'node', 'skillvault', 'manager', 'discover-sources',
+        '--root', root,
+        '--out', sourcesOut
+      ])).toBe(0);
+      const sources = await readJsonFile<{ sources: Array<{ id: string }> }>(sourcesOut);
+      expect(sources.sources.some((source) => source.id === 'skills-sh')).toBe(true);
+
+      expect(await main([
+        'node', 'skillvault', 'manager', 'sync',
+        '--root', root,
+        '--out', syncOut
+      ])).toBe(0);
+      const sync = await readJsonFile<{ discovered: Array<{ skillId: string }> }>(syncOut);
+      expect(sync.discovered.some((row) => row.skillId === imported.skillId)).toBe(true);
+
+      expect(await main([
+        'node', 'skillvault', 'manager', 'sync',
+        '--root', root,
+        '--with-summary',
+        '--out', summaryOut
+      ])).toBe(0);
+      const summary = await readJsonFile<{ totals: { managedSkills: number; installations: number } }>(summaryOut);
+      expect(summary.totals.managedSkills).toBeGreaterThanOrEqual(1);
+      expect(summary.totals.installations).toBeGreaterThanOrEqual(1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

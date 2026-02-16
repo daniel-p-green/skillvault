@@ -51,7 +51,7 @@ export function DashboardPage() {
   const fail = skills.filter((item) => item.verdict === 'FAIL').length;
 
   return (
-    <PageShell title="Vault Dashboard" subtitle="Trust posture, deployment momentum, and drift pressure in one screen.">
+    <PageShell title="Overview" subtitle="Current trust posture, deployment state, and drift risk in one place.">
       <div className="card-grid">
         <article className="metric-card">
           <div className="metric-title">Skills in Vault</div>

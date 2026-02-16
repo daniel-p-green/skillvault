@@ -34,15 +34,34 @@ export function setApiToken(token: string | null): void {
   }
 }
 
+function buildApiUrl(inputPath: string): string {
+  const base = new URL(API_BASE);
+  const normalizedInputPath = inputPath.startsWith('/') ? inputPath : `/${inputPath}`;
+  const basePath = base.pathname.replace(/\/+$/, '');
+
+  let resolvedPath = normalizedInputPath;
+  if (basePath && basePath !== '/') {
+    if (normalizedInputPath !== basePath && !normalizedInputPath.startsWith(`${basePath}/`)) {
+      resolvedPath = `${basePath}${normalizedInputPath}`;
+    }
+  }
+
+  return `${base.origin}${resolvedPath}`;
+}
+
 async function request<T>(inputPath: string, init?: RequestInit): Promise<T> {
   const token = readApiToken();
-  const response = await fetch(`${API_BASE}${inputPath}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {})
-    },
-    ...init
+  const headers = new Headers(init?.headers ?? {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (init?.body !== undefined && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(buildApiUrl(inputPath), {
+    ...init,
+    headers
   });
 
   if (!response.ok) {

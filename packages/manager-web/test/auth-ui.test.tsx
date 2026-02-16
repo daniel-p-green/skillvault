@@ -55,7 +55,7 @@ describe('manager web auth token forwarding', () => {
   it('sends bearer token header when API token is set in local storage', async () => {
     setApiToken('svtok_test_token');
     renderApp();
-    await screen.findByText('Vault Dashboard');
+    await screen.findByRole('heading', { level: 2, name: 'Overview' });
 
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock).toHaveBeenCalled();

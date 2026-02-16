@@ -74,6 +74,43 @@ export interface DiscoveryResult {
   title?: string;
 }
 
+export interface DiscoverySource {
+  id: string;
+  label: string;
+  url: string;
+  description: string;
+  importHint: string;
+}
+
+export interface FilesystemInstallationRecord {
+  adapterId: string;
+  scope: InstallScope;
+  installedPath: string;
+  managedDeployment: boolean;
+}
+
+export interface FilesystemSkillRecord {
+  skillId: string;
+  name: string;
+  sourceType: string | null;
+  sourceLocator: string | null;
+  versionHash: string | null;
+  riskTotal: number | null;
+  verdict: TrustVerdict | null;
+  managed: boolean;
+  installations: FilesystemInstallationRecord[];
+}
+
+export interface FilesystemInventory {
+  totals: {
+    managedSkills: number;
+    unmanagedSkills: number;
+    installations: number;
+    adaptersScanned: number;
+  };
+  skills: FilesystemSkillRecord[];
+}
+
 export type TelemetryOutboxStatus = 'pending' | 'retry' | 'sent' | 'dead_letter' | 'skipped';
 
 export interface TelemetryEvent {

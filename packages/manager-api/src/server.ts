@@ -23,6 +23,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     ['POST /evals/runs', 'write:evals'],
     ['GET /evals/runs/:id', 'read:evals'],
     ['GET /skills', 'read:skills'],
+    ['GET /skills/filesystem', 'read:skills'],
     ['POST /skills/import', 'write:skills'],
     ['GET /skills/:id', 'read:skills'],
     ['POST /skills/:id/deploy', 'write:deployments'],
@@ -31,6 +32,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     ['GET /telemetry/status', 'read:telemetry'],
     ['POST /telemetry/flush', 'write:telemetry'],
     ['GET /audit/summary', 'read:audit'],
+    ['GET /discover/sources', 'read:discover'],
     ['POST /discover', 'write:discover'],
     ['POST /sync', 'write:sync'],
     ['GET /rbac/roles', 'read:rbac'],
@@ -120,6 +122,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       search: request.query.search
     })
   }));
+
+  app.get('/skills/filesystem', async () => manager.filesystemInventory());
 
   app.post<{
     Body: {
@@ -214,6 +218,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
   app.post<{ Body: { query: string } }>('/discover', async (request) => ({
     results: await manager.discover(request.body.query)
+  }));
+
+  app.get('/discover/sources', async () => ({
+    sources: manager.listDiscoverySources()
   }));
 
   app.post('/sync', async () => manager.syncInstalledSkills());

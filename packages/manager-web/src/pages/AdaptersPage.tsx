@@ -63,7 +63,7 @@ export function AdaptersPage() {
   }, [adaptersQuery.data, filter]);
 
   return (
-    <PageShell title="Adapters" subtitle="skills.sh parity snapshot plus local enable/disable controls and path diagnostics.">
+    <PageShell title="Adapters" subtitle="Enable target apps, validate install paths, and keep adapter configuration healthy.">
       <div className="row spread">
         <div className="toggle-row" role="tablist" aria-label="Adapter filter">
           <button type="button" className={`chip ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All</button>

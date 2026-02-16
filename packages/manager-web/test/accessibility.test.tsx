@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from '../src/App.js';
@@ -50,23 +50,25 @@ describe('navigation accessibility', () => {
 
   it('exposes all primary views as keyboard-reachable nav buttons', async () => {
     renderApp();
-    await screen.findByText('SkillVault Operations Atelier');
+    await screen.findByText('SkillVault Manager');
+    const nav = screen.getByLabelText('Primary navigation');
 
     for (const label of [
-      'Dashboard',
+      'Overview',
+      'Installed Skills',
       'Skill Detail',
       'Adapters',
-      'Deploy Flow',
+      'Deploy',
       'Audit',
-      'Discover',
+      'Discover & Import',
       'Telemetry',
       'Evals',
       'Access'
     ]) {
-      const button = screen.getByRole('button', { name: new RegExp(label, 'i') });
+      const labelNode = within(nav).getByText(label);
+      const button = labelNode.closest('button');
       expect(button).toBeTruthy();
       expect((button as HTMLButtonElement).type).toBe('button');
     }
   });
 });
-

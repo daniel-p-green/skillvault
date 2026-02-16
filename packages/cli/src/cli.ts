@@ -1056,6 +1056,72 @@ export async function main(argv = process.argv): Promise<number> {
             }
           )
           .command(
+            'discover-sources',
+            'List common discovery sites and URL import hints',
+            (cmd) =>
+              cmd.option('root', {
+                type: 'string',
+                describe: 'Workspace root (defaults to cwd)'
+              }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              const sources = await withManager(root, async (manager) => manager.listDiscoverySources());
+              if (args.format === 'table') {
+                const lines = [
+                  'id | label | url',
+                  ...sources.map((source) => `${source.id} | ${source.label} | ${source.url}`)
+                ];
+                await writeOutput(args, `${lines.join('\n')}\n`);
+                return;
+              }
+              await writeOutput(args, `${JSON.stringify({ sources }, null, 2)}\n`);
+            }
+          )
+          .command(
+            'sync',
+            'Scan local adapter paths for installed skills',
+            (cmd) =>
+              cmd
+                .option('root', {
+                  type: 'string',
+                  describe: 'Workspace root (defaults to cwd)'
+                })
+                .option('with-summary', {
+                  type: 'boolean',
+                  default: false,
+                  describe: 'Include full managed/unmanaged filesystem summary'
+                }),
+            async (args) => {
+              const root = requireManagerRoot(args);
+              if (Boolean(args.withSummary)) {
+                const summary = await withManager(root, async (manager) => manager.filesystemInventory());
+                if (args.format === 'table') {
+                  const lines = [
+                    `managed_skills: ${summary.totals.managedSkills}`,
+                    `unmanaged_skills: ${summary.totals.unmanagedSkills}`,
+                    `installations: ${summary.totals.installations}`,
+                    `adapters_scanned: ${summary.totals.adaptersScanned}`
+                  ];
+                  await writeOutput(args, `${lines.join('\n')}\n`);
+                  return;
+                }
+                await writeOutput(args, `${JSON.stringify(summary, null, 2)}\n`);
+                return;
+              }
+
+              const discovered = await withManager(root, async (manager) => manager.syncInstalledSkills());
+              if (args.format === 'table') {
+                const lines = [
+                  'skillId | adapterId | scope | installedPath',
+                  ...discovered.discovered.map((row) => `${row.skillId} | ${row.adapterId} | ${row.scope} | ${row.installedPath}`)
+                ];
+                await writeOutput(args, `${lines.join('\n')}\n`);
+                return;
+              }
+              await writeOutput(args, `${JSON.stringify(discovered, null, 2)}\n`);
+            }
+          )
+          .command(
             'serve',
             'Start local manager API server for GUI',
             (cmd) =>

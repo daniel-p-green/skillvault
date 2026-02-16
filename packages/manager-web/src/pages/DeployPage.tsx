@@ -69,7 +69,7 @@ export function DeployPage() {
   };
 
   return (
-    <PageShell title="Deploy Flow" subtitle="Choose a version, adapter targets, scope, and install mode with immediate deployment feedback.">
+    <PageShell title="Deploy" subtitle="Select a skill, choose targets, and apply deploy or undeploy operations with immediate feedback.">
       <form onSubmit={onDeploy} className="form-grid">
         <label className="field">
           Skill

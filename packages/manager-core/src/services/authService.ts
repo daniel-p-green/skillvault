@@ -9,6 +9,7 @@ const VIEWER_PERMISSIONS = [
   'read:skills',
   'read:deployments',
   'read:audit',
+  'read:discover',
   'read:telemetry',
   'read:evals',
   'read:rbac'
@@ -240,4 +241,3 @@ export class AuthService {
     return null;
   }
 }
-

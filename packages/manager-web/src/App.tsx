@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { DashboardPage } from './pages/DashboardPage.js';
 import { SkillDetailPage } from './pages/SkillDetailPage.js';
+import { InstalledSkillsPage } from './pages/InstalledSkillsPage.js';
 import { AdaptersPage } from './pages/AdaptersPage.js';
 import { DeployPage } from './pages/DeployPage.js';
 import { AuditPage } from './pages/AuditPage.js';
@@ -13,28 +14,31 @@ import { EvalsPage } from './pages/EvalsPage.js';
 import { AccessPage } from './pages/AccessPage.js';
 import { apiGet } from './services/http.js';
 
-type PageKey = 'dashboard' | 'skill' | 'adapters' | 'deploy' | 'audit' | 'discover' | 'telemetry' | 'evals' | 'access';
+type PageKey = 'dashboard' | 'installed' | 'skill' | 'adapters' | 'deploy' | 'audit' | 'discover' | 'telemetry' | 'evals' | 'access';
 
 interface HealthResponse {
   ok: boolean;
 }
 
 const NAV_ITEMS: Array<{ key: PageKey; label: string; description: string }> = [
-  { key: 'dashboard', label: 'Dashboard', description: 'Inventory pulse and deployment load' },
-  { key: 'skill', label: 'Skill Detail', description: 'Timeline, receipts, and findings' },
-  { key: 'adapters', label: 'Adapters', description: 'Targets and path health' },
-  { key: 'deploy', label: 'Deploy Flow', description: 'Push versions by scope and mode' },
-  { key: 'audit', label: 'Audit', description: 'Stale scans and drift traces' },
-  { key: 'discover', label: 'Discover', description: 'skills.sh search and import' },
-  { key: 'telemetry', label: 'Telemetry', description: 'Outbox health and export state' },
-  { key: 'evals', label: 'Evals', description: 'Regression runs and score deltas' },
-  { key: 'access', label: 'Access', description: 'RBAC mode, roles, and token flows' }
+  { key: 'dashboard', label: 'Overview', description: 'Current risk and deployment health' },
+  { key: 'installed', label: 'Installed Skills', description: 'What is installed and where' },
+  { key: 'skill', label: 'Skill Detail', description: 'Version, receipt, and findings' },
+  { key: 'adapters', label: 'Adapters', description: 'Targets, paths, and status' },
+  { key: 'deploy', label: 'Deploy', description: 'Install or remove to selected apps' },
+  { key: 'audit', label: 'Audit', description: 'Drift and stale scan checks' },
+  { key: 'discover', label: 'Discover & Import', description: 'Find sources and import by URL' },
+  { key: 'telemetry', label: 'Telemetry', description: 'Export queue and event delivery' },
+  { key: 'evals', label: 'Evals', description: 'Regression checks before rollout' },
+  { key: 'access', label: 'Access', description: 'Auth mode, roles, and tokens' }
 ];
 
 function pageForKey(key: PageKey) {
   switch (key) {
     case 'dashboard':
       return <DashboardPage />;
+    case 'installed':
+      return <InstalledSkillsPage />;
     case 'skill':
       return <SkillDetailPage />;
     case 'adapters':
@@ -75,14 +79,14 @@ export function App() {
             {health.data?.ok ? 'Manager API live on :4646' : health.isLoading ? 'Checking manager API...' : 'Manager API unavailable'}
           </span>
         </div>
-        <h1 className="brand">SkillVault Operations Atelier</h1>
+        <h1 className="brand">SkillVault Manager</h1>
         <p className="subtitle">
-          Multi-app trust orchestration for Codex, Windsurf, OpenClaw, Cursor, Claude Code, and the wider adapter matrix.
+          Utility-first control plane for importing, scanning, and deploying skills across Codex, Windsurf, OpenClaw, Cursor, and Claude Code.
         </p>
       </header>
 
       <div className="grid">
-        <aside className="sidebar">
+        <aside className="sidebar" aria-label="Primary navigation">
           {NAV_ITEMS.map((item, index) => (
             <motion.button
               key={item.key}

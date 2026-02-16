@@ -62,4 +62,58 @@ describe('manager integration flows', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it('reports managed skills with source and install locations from filesystem inventory', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'skillvault-filesystem-inventory-'));
+    const manager = new SkillVaultManager(root);
+    try {
+      await manager.init();
+      const bundleDir = path.join(root, 'bundle');
+      await fs.mkdir(bundleDir, { recursive: true });
+      await fs.writeFile(path.join(bundleDir, 'SKILL.md'), '---\nname: local-master-skill\ndescription: local inventory\n---\n', 'utf8');
+      await fs.writeFile(path.join(bundleDir, 'tool.js'), 'export const local = true;\n', 'utf8');
+
+      const imported = await manager.importSkill(bundleDir, { sourceType: 'path', sourceLocator: bundleDir });
+      await manager.deploy(imported.skillId, {
+        adapter: 'codex',
+        scope: 'project',
+        mode: 'symlink'
+      });
+
+      const report = await manager.filesystemInventory();
+      const skill = report.skills.find((entry) => entry.skillId === imported.skillId);
+      expect(skill).toBeDefined();
+      expect(skill?.managed).toBe(true);
+      expect(skill?.sourceLocator).toBe(bundleDir);
+      expect(skill?.versionHash).toBe(imported.versionHash);
+      expect(skill?.installations.some((install) => install.adapterId === 'codex')).toBe(true);
+    } finally {
+      await manager.close();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('infers best-effort metadata for unmanaged filesystem skills', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'skillvault-unmanaged-inventory-'));
+    const manager = new SkillVaultManager(root);
+    try {
+      await manager.init();
+      const unmanagedDir = path.join(root, '.agents', 'skills', 'manual-skill');
+      await fs.mkdir(unmanagedDir, { recursive: true });
+      await fs.writeFile(path.join(unmanagedDir, 'SKILL.md'), '---\nname: Manual Skill\ndescription: unmanaged\n---\n', 'utf8');
+      await fs.writeFile(path.join(unmanagedDir, 'tool.js'), 'export const unmanaged = true;\n', 'utf8');
+
+      const report = await manager.filesystemInventory();
+      const unmanaged = report.skills.find((entry) => entry.skillId === 'manual-skill');
+      expect(unmanaged).toBeDefined();
+      expect(unmanaged?.managed).toBe(false);
+      expect(unmanaged?.name).toBe('Manual Skill');
+      expect(unmanaged?.sourceType).toBe('filesystem');
+      expect(unmanaged?.sourceLocator).toContain(path.join(root, '.agents', 'skills', 'manual-skill'));
+      expect(unmanaged?.versionHash?.length).toBe(64);
+    } finally {
+      await manager.close();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

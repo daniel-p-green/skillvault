@@ -91,6 +91,8 @@ skillvault manager undeploy <skill_id> --adapter <id|*> [--scope project|global]
 ```bash
 skillvault manager audit [--stale-days <n>] [--format json|table] [--root <path>]
 skillvault manager discover --query "<text>" [--root <path>]
+skillvault manager discover-sources [--root <path>] [--format json|table]
+skillvault manager sync [--with-summary] [--root <path>] [--format json|table]
 ```
 
 ### Telemetry
@@ -128,8 +130,10 @@ skillvault manager serve [--port 4646] [--root <path>]
 
 - `GET /health`
 - `GET /skills`
+- `GET /skills/filesystem`
 - `GET /deployments`
 - `GET /audit/summary`
+- `GET /discover/sources`
 - `GET /telemetry/status`
 - `POST /telemetry/flush`
 - `GET /evals/datasets`
@@ -138,5 +142,6 @@ skillvault manager serve [--port 4646] [--root <path>]
 - `GET /me`
 - `GET /rbac/roles`
 - `POST /auth/tokens`
+- `POST /sync`
 
 When `SKILLVAULT_AUTH_MODE=required`, pass `Authorization: Bearer <token>` for protected routes.

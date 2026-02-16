@@ -7,6 +7,8 @@ It keeps the v0.1 deterministic trust layer and extends v0.2 manager flows with:
 - deterministic eval datasets/runs/comparisons
 - additive RBAC/token preparation for API access control
 - expanded manager GUI pages for telemetry, evals, and access
+- URL-based imports from common discovery sites (with scan + receipt creation)
+- filesystem master inventory showing source, version, and install locations
 
 ## Why v0.3
 
@@ -58,6 +60,7 @@ node packages/cli/dist/cli.js manager auth bootstrap
 
 ```bash
 node packages/cli/dist/cli.js manager import /path/to/skill-bundle
+node packages/cli/dist/cli.js manager import https://skills.sh/owner/repo/skill
 node packages/cli/dist/cli.js manager deploy <skill_id> --adapter codex --scope project --mode symlink
 node packages/cli/dist/cli.js manager audit --stale-days 14 --format table
 ```
@@ -81,6 +84,14 @@ npm run dev:manager
 ```
 
 Manager API defaults to `http://127.0.0.1:4646`.
+
+### 6) Discovery sources + filesystem inventory
+
+```bash
+node packages/cli/dist/cli.js manager discover-sources
+node packages/cli/dist/cli.js manager sync
+node packages/cli/dist/cli.js manager sync --with-summary
+```
 
 ## Adapter Matrix (skills.sh parity snapshot)
 
@@ -143,6 +154,8 @@ v0.3 telemetry export safety:
 - `skillvault manager undeploy`
 - `skillvault manager audit`
 - `skillvault manager discover`
+- `skillvault manager discover-sources`
+- `skillvault manager sync`
 - `skillvault manager telemetry status`
 - `skillvault manager telemetry flush`
 - `skillvault manager eval datasets seed`

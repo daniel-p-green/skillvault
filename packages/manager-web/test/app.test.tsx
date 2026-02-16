@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from '../src/App.js';
@@ -72,6 +72,27 @@ describe('manager web app', () => {
           { id: 'openclaw', displayName: 'OpenClaw', projectPath: 'skills', globalPath: '~/.openclaw/skills', isEnabled: false }
         ]
       },
+      '/discover/sources': {
+        sources: [
+          { id: 'skills-sh', label: 'skills.sh', url: 'https://skills.sh', description: 'Directory', importHint: 'Paste URL' }
+        ]
+      },
+      '/skills/filesystem': {
+        totals: { managedSkills: 1, unmanagedSkills: 0, installations: 1, adaptersScanned: 2 },
+        skills: [
+          {
+            skillId: 'alpha-skill',
+            name: 'Alpha Skill',
+            sourceType: 'path',
+            sourceLocator: '/tmp/alpha',
+            versionHash: 'v1',
+            riskTotal: 0,
+            verdict: 'PASS',
+            managed: true,
+            installations: [{ adapterId: 'codex', scope: 'project', installedPath: '/tmp/alpha', managedDeployment: true }]
+          }
+        ]
+      },
       '/adapters/validate': {
         issues: []
       },
@@ -93,6 +114,7 @@ describe('manager web app', () => {
       'POST /skills/alpha-skill/undeploy': { ok: true, undeployed: [{ adapterId: 'codex', removed: true }] },
       'POST /adapters/toggle': { ok: true },
       'POST /adapters/sync': { total: 40 },
+      'POST /sync': { discovered: [{ skillId: 'alpha-skill' }] },
       'POST /discover': {
         results: [{ installRef: 'owner/repo@skill', installs: 42, url: 'https://skills.sh/owner/repo/skill' }]
       },
@@ -103,6 +125,9 @@ describe('manager web app', () => {
         receiptPath: '/tmp/receipt.json',
         riskTotal: 0,
         verdict: 'PASS'
+      },
+      'POST /skills/imported-skill/deploy': {
+        deployments: [{ adapterId: 'codex', status: 'deployed' }]
       }
     });
   });
@@ -114,7 +139,7 @@ describe('manager web app', () => {
 
   it('renders dashboard with seeded manager summary', async () => {
     renderApp();
-    await screen.findByText('Vault Dashboard');
+    await screen.findByRole('heading', { level: 2, name: 'Overview' });
     await screen.findByText('Skills in Vault');
     expect(screen.getByText('PASS / WARN / FAIL')).toBeTruthy();
     await waitFor(() => {
@@ -124,8 +149,9 @@ describe('manager web app', () => {
 
   it('runs deploy flow happy path', async () => {
     renderApp();
-    fireEvent.click(await screen.findByRole('button', { name: /Deploy Flow/i }));
-    await screen.findByRole('heading', { level: 2, name: 'Deploy Flow' });
+    const nav = await screen.findByLabelText('Primary navigation');
+    fireEvent.click(within(nav).getByRole('button', { name: /^Deploy\b/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Deploy' });
 
     fireEvent.change(screen.getByLabelText('Skill'), { target: { value: 'alpha-skill' } });
     fireEvent.change(screen.getByLabelText('Adapter'), { target: { value: 'codex' } });
@@ -139,10 +165,106 @@ describe('manager web app', () => {
   it('filters adapters and shows status badges', async () => {
     renderApp();
     fireEvent.click(await screen.findByRole('button', { name: /Adapters/i }));
-    await screen.findByText('skills.sh parity snapshot plus local enable/disable controls and path diagnostics.');
+    await screen.findByText('Enable target apps, validate install paths, and keep adapter configuration healthy.');
     fireEvent.click(screen.getByRole('button', { name: 'Disabled' }));
     await waitFor(() => {
       expect(screen.getByText('OpenClaw')).toBeTruthy();
+    });
+  });
+
+  it('shows filesystem-backed installed skills inventory', async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Installed Skills/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Installed Skills' });
+    expect(screen.getByText('Master inventory across the local filesystem: what exists, where it came from, its current version, and where each skill is installed.')).toBeTruthy();
+    expect(await screen.findByText('alpha-skill')).toBeTruthy();
+    const pathMatches = await screen.findAllByText('/tmp/alpha');
+    expect(pathMatches.length).toBeGreaterThan(0);
+  });
+
+  it('shows actionable filesystem scan errors instead of empty-state confusion', async () => {
+    installFetchMock({
+      '/health': { ok: true },
+      '/skills': { skills: [] },
+      '/deployments': { deployments: [] },
+      '/audit/summary': {
+        totals: { skills: 0, deployments: 0, staleSkills: 0, driftedDeployments: 0 },
+        staleSkills: [],
+        driftedDeployments: []
+      }
+    });
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Installed Skills/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Installed Skills' });
+    expect(await screen.findByText(/Filesystem scan failed:/i)).toBeTruthy();
+  });
+
+  it('falls back to /sync when older API returns Skill not found for /skills/filesystem', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        const path = url.replace(/^https?:\/\/[^/]+/, '');
+        const headers = new Headers(init?.headers);
+
+        if (path === '/skills/filesystem') {
+          return createResponse({ error: 'Skill not found' }, 404);
+        }
+        if (method === 'POST' && path === '/sync') {
+          if (headers.has('Content-Type')) {
+            return createResponse({
+              statusCode: 400,
+              code: 'FST_ERR_CTP_EMPTY_JSON_BODY',
+              error: 'Bad Request',
+              message: "Body cannot be empty when content-type is set to 'application/json'"
+            }, 400);
+          }
+          return createResponse({
+            discovered: [{ adapterId: 'codex', scope: 'project', installedPath: '/tmp/legacy-skill', skillId: 'legacy-skill' }]
+          });
+        }
+
+        const overrides: Record<string, JsonValue> = {
+          '/health': { ok: true },
+          '/skills': { skills: [] },
+          '/deployments': { deployments: [] },
+          '/audit/summary': {
+            totals: { skills: 0, deployments: 0, staleSkills: 0, driftedDeployments: 0 },
+            staleSkills: [],
+            driftedDeployments: []
+          },
+          '/adapters': { adapters: [] },
+          '/discover/sources': { sources: [] }
+        };
+        const key = `${method} ${path}`;
+        const body = overrides[key] ?? overrides[path];
+        if (!body) {
+          return createResponse({ error: `No mock for ${key}` }, 404);
+        }
+        return createResponse(body);
+      })
+    );
+
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Installed Skills/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Installed Skills' });
+    const matches = await screen.findAllByText('legacy-skill');
+    expect(matches.length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Filesystem scan failed:/i)).toBeNull();
+  });
+
+  it('imports by URL from discover page and deploys after scan', async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Discover & Import/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Discover & Import' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Use URL/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Import and Deploy/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/"skillId": "imported-skill"/)).toBeTruthy();
+      expect(screen.getByText(/"deployments"/)).toBeTruthy();
     });
   });
 
@@ -158,8 +280,9 @@ describe('manager web app', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 420 });
     window.dispatchEvent(new Event('resize'));
     renderApp();
-    await screen.findByText('SkillVault Operations Atelier');
-    expect(screen.getByRole('button', { name: /Dashboard/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Discover/i })).toBeTruthy();
+    await screen.findByText('SkillVault Manager');
+    expect(screen.getByRole('button', { name: /Overview/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Installed Skills/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Discover & Import/i })).toBeTruthy();
   });
 });

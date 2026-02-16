@@ -14,10 +14,14 @@ import type {
   DeploymentRecord,
   DeploymentResult,
   DiscoveryResult,
+  DiscoverySource,
   EvalCase,
   EvalDataset,
   EvalResult,
   EvalRun,
+  FilesystemInventory,
+  FilesystemInstallationRecord,
+  FilesystemSkillRecord,
   InstallMode,
   InstallScope,
   Role,
@@ -32,6 +36,38 @@ import { AuthService, type AuthSession } from './authService.js';
 
 const execFileAsync = promisify(execFile);
 const MANIFEST_FILENAMES = ['SKILL.md', 'skill.md'];
+const MAX_REMOTE_IMPORT_BYTES = 25 * 1024 * 1024;
+const ALLOWED_REMOTE_HOSTS = new Set([
+  'skills.sh',
+  'www.skills.sh',
+  'github.com',
+  'codeload.github.com',
+  'raw.githubusercontent.com',
+  'gist.githubusercontent.com'
+]);
+const DISCOVERY_SOURCES: DiscoverySource[] = [
+  {
+    id: 'skills-sh',
+    label: 'skills.sh',
+    url: 'https://skills.sh',
+    description: 'Cross-agent skill directory with install popularity and compatibility context.',
+    importHint: 'Paste a skills.sh entry URL, then import and deploy.'
+  },
+  {
+    id: 'github',
+    label: 'GitHub',
+    url: 'https://github.com',
+    description: 'Public skill repositories and release artifacts.',
+    importHint: 'Paste a GitHub repo URL or a direct .zip URL.'
+  },
+  {
+    id: 'raw-github',
+    label: 'Raw GitHub',
+    url: 'https://raw.githubusercontent.com',
+    description: 'Raw-hosted archives and manifest references.',
+    importHint: 'Use direct archive URLs for deterministic import.'
+  }
+];
 const DEFAULT_EVAL_DATASET_ID = 'default-manager-regression';
 const DEFAULT_EVAL_CASES: Array<{
   key: string;
@@ -62,6 +98,13 @@ const DEFAULT_EVAL_CASES: Array<{
 interface BundleFile {
   path: string;
   bytes: Uint8Array;
+}
+
+interface ResolvedImportInput {
+  localPath: string;
+  sourceType: string;
+  sourceLocator: string;
+  cleanup: () => Promise<void>;
 }
 
 export interface ManagerImportResult {
@@ -280,11 +323,178 @@ export class SkillVaultManager {
     return { id: spec.id };
   }
 
+  listDiscoverySources(): DiscoverySource[] {
+    return DISCOVERY_SOURCES.map((source) => ({ ...source }));
+  }
+
   private expandUserPath(inputPath: string): string {
     if (inputPath.startsWith('~/')) {
       return path.join(os.homedir(), inputPath.slice(2));
     }
     return inputPath;
+  }
+
+  private parseRemoteUrl(input: string): URL | null {
+    try {
+      const parsed = new URL(input);
+      if (parsed.protocol !== 'https:') return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private ensureAllowedRemoteUrl(remoteUrl: URL): void {
+    if (!ALLOWED_REMOTE_HOSTS.has(remoteUrl.hostname)) {
+      throw new Error(`Remote host is not allowlisted: ${remoteUrl.hostname}`);
+    }
+  }
+
+  private inferSkillNameFromLocator(locator: string): string {
+    const parsed = this.parseRemoteUrl(locator);
+    if (!parsed) {
+      return path.basename(locator, path.extname(locator));
+    }
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] ?? 'skill';
+    return decodeURIComponent(last).replace(/\.zip$/i, '');
+  }
+
+  private async downloadRemoteZip(remoteUrl: URL): Promise<{ localPath: string; cleanup: () => Promise<void> }> {
+    this.ensureAllowedRemoteUrl(remoteUrl);
+    const response = await fetch(remoteUrl.toString());
+    if (!response.ok) {
+      throw new Error(`Remote download failed (${response.status}) for ${remoteUrl.toString()}`);
+    }
+    const finalUrl = this.parseRemoteUrl(response.url || remoteUrl.toString());
+    if (!finalUrl) {
+      throw new Error(`Remote download redirected to unsupported URL: ${response.url}`);
+    }
+    this.ensureAllowedRemoteUrl(finalUrl);
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_REMOTE_IMPORT_BYTES) {
+      throw new Error(`Remote bundle exceeds ${MAX_REMOTE_IMPORT_BYTES} byte limit`);
+    }
+
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skillvault-import-url-'));
+    const zipPath = path.join(tempDir, 'bundle.zip');
+    await fs.writeFile(zipPath, bytes);
+    return {
+      localPath: zipPath,
+      cleanup: async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    };
+  }
+
+  private async cloneGitHubRepo(remoteUrl: URL): Promise<{ localPath: string; cleanup: () => Promise<void> }> {
+    this.ensureAllowedRemoteUrl(remoteUrl);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skillvault-import-github-'));
+    const repoDir = path.join(tempDir, 'repo');
+
+    const parts = remoteUrl.pathname.split('/').filter(Boolean);
+    const owner = parts[0];
+    const repo = parts[1];
+    if (!owner || !repo) {
+      throw new Error(`Unsupported GitHub URL: ${remoteUrl.toString()}`);
+    }
+
+    let branch: string | undefined;
+    let subPath = '';
+    if ((parts[2] === 'tree' || parts[2] === 'blob') && parts[3]) {
+      branch = parts[3];
+      subPath = parts.slice(4).join('/');
+    }
+
+    const cloneUrl = `https://github.com/${owner}/${repo.replace(/\.git$/i, '')}.git`;
+    const cloneArgs = ['clone', '--depth', '1'];
+    if (branch) {
+      cloneArgs.push('--branch', branch);
+    }
+    cloneArgs.push(cloneUrl, repoDir);
+    await execFileAsync('git', cloneArgs, { maxBuffer: 10 * 1024 * 1024 });
+
+    const localPath = subPath ? path.join(repoDir, subPath) : repoDir;
+    return {
+      localPath,
+      cleanup: async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    };
+  }
+
+  private async resolveSkillsShUrl(remoteUrl: URL): Promise<URL | null> {
+    this.ensureAllowedRemoteUrl(remoteUrl);
+    const response = await fetch(remoteUrl.toString());
+    if (!response.ok) return null;
+    const html = await response.text();
+    const githubMatch = html.match(/https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(?:\/tree\/[a-zA-Z0-9_.-]+(?:\/[^\s"'<>]+)?)?/);
+    if (!githubMatch) return null;
+    const parsed = this.parseRemoteUrl(githubMatch[0]);
+    return parsed ?? null;
+  }
+
+  private async resolveImportInput(bundlePathOrZip: string): Promise<ResolvedImportInput> {
+    const remoteUrl = this.parseRemoteUrl(bundlePathOrZip);
+    if (!remoteUrl) {
+      const expanded = this.expandUserPath(bundlePathOrZip);
+      return {
+        localPath: path.resolve(expanded),
+        sourceType: 'path',
+        sourceLocator: path.resolve(expanded),
+        cleanup: async () => {}
+      };
+    }
+
+    this.ensureAllowedRemoteUrl(remoteUrl);
+    const isZipLike = remoteUrl.pathname.toLowerCase().endsWith('.zip');
+    if (isZipLike) {
+      const downloaded = await this.downloadRemoteZip(remoteUrl);
+      return {
+        localPath: downloaded.localPath,
+        sourceType: 'url',
+        sourceLocator: remoteUrl.toString(),
+        cleanup: downloaded.cleanup
+      };
+    }
+
+    if (remoteUrl.hostname === 'skills.sh' || remoteUrl.hostname === 'www.skills.sh') {
+      const githubUrl = await this.resolveSkillsShUrl(remoteUrl);
+      if (!githubUrl) {
+        throw new Error(`Could not resolve a GitHub source from skills.sh URL: ${remoteUrl.toString()}`);
+      }
+      const cloned = await this.cloneGitHubRepo(githubUrl);
+      return {
+        localPath: cloned.localPath,
+        sourceType: 'url',
+        sourceLocator: remoteUrl.toString(),
+        cleanup: cloned.cleanup
+      };
+    }
+
+    if (remoteUrl.hostname === 'github.com') {
+      const cloned = await this.cloneGitHubRepo(remoteUrl);
+      return {
+        localPath: cloned.localPath,
+        sourceType: 'url',
+        sourceLocator: remoteUrl.toString(),
+        cleanup: cloned.cleanup
+      };
+    }
+
+    if (remoteUrl.hostname === 'codeload.github.com' || remoteUrl.hostname === 'raw.githubusercontent.com') {
+      const downloaded = await this.downloadRemoteZip(remoteUrl);
+      return {
+        localPath: downloaded.localPath,
+        sourceType: 'url',
+        sourceLocator: remoteUrl.toString(),
+        cleanup: downloaded.cleanup
+      };
+    }
+
+    throw new Error(`Unsupported remote import URL: ${remoteUrl.toString()}`);
   }
 
   validateAdapterPaths(): Array<{ adapterId: string; issue: string }> {
@@ -387,125 +597,132 @@ export class SkillVaultManager {
   }
 
   async importSkill(bundlePathOrZip: string, opts?: { sourceType?: string; sourceLocator?: string }): Promise<ManagerImportResult> {
-    const files = await this.readBundleInput(bundlePathOrZip);
-    const fileHashes = files.map((file) => ({
-      path: file.path,
-      size: file.bytes.byteLength,
-      sha256: sha256Hex(file.bytes)
-    }));
+    const resolved = await this.resolveImportInput(bundlePathOrZip);
+    try {
+      const files = await this.readBundleInput(resolved.localPath);
+      const fileHashes = files.map((file) => ({
+        path: file.path,
+        size: file.bytes.byteLength,
+        sha256: sha256Hex(file.bytes)
+      }));
 
-    const manifestCandidates = fileHashes.filter((file) => MANIFEST_FILENAMES.includes(file.path));
-    const findings: Array<{ code: string; severity: 'warn' | 'error'; message: string }> = [];
-    if (manifestCandidates.length !== 1) {
-      findings.push({
-        code: 'CONSTRAINT_MANIFEST_COUNT',
-        severity: 'error',
-        message: `Expected exactly one manifest; found ${manifestCandidates.length}`
+      const manifestCandidates = fileHashes.filter((file) => MANIFEST_FILENAMES.includes(file.path));
+      const findings: Array<{ code: string; severity: 'warn' | 'error'; message: string }> = [];
+      if (manifestCandidates.length !== 1) {
+        findings.push({
+          code: 'CONSTRAINT_MANIFEST_COUNT',
+          severity: 'error',
+          message: `Expected exactly one manifest; found ${manifestCandidates.length}`
+        });
+      }
+
+      const manifestPath = manifestCandidates[0]?.path;
+      const manifestFile = manifestPath ? files.find((file) => file.path === manifestPath) : undefined;
+      const manifestText = manifestFile ? Buffer.from(manifestFile.bytes).toString('utf8') : '';
+      const parsedManifest = this.parseManifestFrontmatter(manifestText);
+      const inferredName = parsedManifest.name || this.inferSkillNameFromLocator(resolved.sourceLocator);
+      const skillId = this.normalizeSkillId(inferredName);
+
+      const versionHash = computeBundleSha256(fileHashes.map((entry) => ({ path: entry.path, sha256: entry.sha256 })));
+      const versionId = `${skillId}:${versionHash.slice(0, 16)}`;
+
+      const riskTotal = findings.some((finding) => finding.severity === 'error') ? 100 : 0;
+      const verdict = this.riskToVerdict(riskTotal);
+
+      const skillVersionDir = path.join(this.vaultDir, skillId, versionHash);
+      await fs.mkdir(skillVersionDir, { recursive: true });
+      for (const file of files) {
+        const fullPath = path.join(skillVersionDir, ...file.path.split('/'));
+        await fs.mkdir(path.dirname(fullPath), { recursive: true });
+        await fs.writeFile(fullPath, Buffer.from(file.bytes));
+      }
+
+      const now = this.nowIso();
+      const sourceType = opts?.sourceType ?? resolved.sourceType;
+      const sourceLocator = opts?.sourceLocator ?? resolved.sourceLocator;
+      this.db.insertSkill({
+        id: skillId,
+        name: inferredName,
+        description: parsedManifest.description ?? null,
+        source_type: sourceType,
+        source_locator: sourceLocator,
+        created_at: now,
+        updated_at: now
       });
+
+      this.db.insertSkillVersion({
+        id: versionId,
+        skill_id: skillId,
+        version_hash: versionHash,
+        manifest_path: manifestPath ?? null,
+        bundle_sha256: versionHash,
+        created_at: now,
+        is_current: 1
+      });
+      this.db.setCurrentVersion(skillId, versionId);
+
+      this.db.insertScanRun({
+        id: randomUUID(),
+        skill_version_id: versionId,
+        risk_total: riskTotal,
+        verdict,
+        findings_json: JSON.stringify(findings),
+        scanner_version: 'manager-core.v0.2',
+        created_at: now
+      });
+
+      const receiptId = randomUUID();
+      const receiptPath = path.join(this.receiptsDir, `${receiptId}.json`);
+      const receiptBody = {
+        schema_version: 'skillvault.manager.receipt.v1',
+        receipt_id: receiptId,
+        created_at: now,
+        skill_id: skillId,
+        version_id: versionId,
+        version_hash: versionHash,
+        files: fileHashes,
+        risk_total: riskTotal,
+        verdict,
+        findings
+      };
+
+      await fs.writeFile(receiptPath, JSON.stringify(receiptBody, null, 2) + '\n', 'utf8');
+      this.db.insertReceipt({
+        id: receiptId,
+        skill_version_id: versionId,
+        receipt_path: receiptPath,
+        signature_alg: null,
+        key_id: null,
+        payload_sha256: null,
+        created_at: now
+      });
+
+      this.db.insertAuditEvent({
+        id: randomUUID(),
+        event_type: 'skill.imported',
+        subject_type: 'skill_version',
+        subject_id: versionId,
+        details_json: JSON.stringify({ source: sourceLocator }),
+        created_at: now
+      });
+      await this.recordTelemetry({
+        eventType: 'skill.imported',
+        subjectType: 'skill_version',
+        subjectId: versionId,
+        details: { source: sourceLocator, skillId, versionHash, riskTotal, verdict }
+      });
+
+      return {
+        skillId,
+        versionId,
+        versionHash,
+        receiptPath,
+        riskTotal,
+        verdict
+      };
+    } finally {
+      await resolved.cleanup();
     }
-
-    const manifestPath = manifestCandidates[0]?.path;
-    const manifestFile = manifestPath ? files.find((file) => file.path === manifestPath) : undefined;
-    const manifestText = manifestFile ? Buffer.from(manifestFile.bytes).toString('utf8') : '';
-    const parsedManifest = this.parseManifestFrontmatter(manifestText);
-    const inferredName = parsedManifest.name || path.basename(bundlePathOrZip, path.extname(bundlePathOrZip));
-    const skillId = this.normalizeSkillId(inferredName);
-
-    const versionHash = computeBundleSha256(fileHashes.map((entry) => ({ path: entry.path, sha256: entry.sha256 })));
-    const versionId = `${skillId}:${versionHash.slice(0, 16)}`;
-
-    const riskTotal = findings.some((finding) => finding.severity === 'error') ? 100 : 0;
-    const verdict = this.riskToVerdict(riskTotal);
-
-    const skillVersionDir = path.join(this.vaultDir, skillId, versionHash);
-    await fs.mkdir(skillVersionDir, { recursive: true });
-    for (const file of files) {
-      const fullPath = path.join(skillVersionDir, ...file.path.split('/'));
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-      await fs.writeFile(fullPath, Buffer.from(file.bytes));
-    }
-
-    const now = this.nowIso();
-    this.db.insertSkill({
-      id: skillId,
-      name: inferredName,
-      description: parsedManifest.description ?? null,
-      source_type: opts?.sourceType ?? 'path',
-      source_locator: opts?.sourceLocator ?? bundlePathOrZip,
-      created_at: now,
-      updated_at: now
-    });
-
-    this.db.insertSkillVersion({
-      id: versionId,
-      skill_id: skillId,
-      version_hash: versionHash,
-      manifest_path: manifestPath ?? null,
-      bundle_sha256: versionHash,
-      created_at: now,
-      is_current: 1
-    });
-    this.db.setCurrentVersion(skillId, versionId);
-
-    this.db.insertScanRun({
-      id: randomUUID(),
-      skill_version_id: versionId,
-      risk_total: riskTotal,
-      verdict,
-      findings_json: JSON.stringify(findings),
-      scanner_version: 'manager-core.v0.2',
-      created_at: now
-    });
-
-    const receiptId = randomUUID();
-    const receiptPath = path.join(this.receiptsDir, `${receiptId}.json`);
-    const receiptBody = {
-      schema_version: 'skillvault.manager.receipt.v1',
-      receipt_id: receiptId,
-      created_at: now,
-      skill_id: skillId,
-      version_id: versionId,
-      version_hash: versionHash,
-      files: fileHashes,
-      risk_total: riskTotal,
-      verdict,
-      findings
-    };
-
-    await fs.writeFile(receiptPath, JSON.stringify(receiptBody, null, 2) + '\n', 'utf8');
-    this.db.insertReceipt({
-      id: receiptId,
-      skill_version_id: versionId,
-      receipt_path: receiptPath,
-      signature_alg: null,
-      key_id: null,
-      payload_sha256: null,
-      created_at: now
-    });
-
-    this.db.insertAuditEvent({
-      id: randomUUID(),
-      event_type: 'skill.imported',
-      subject_type: 'skill_version',
-      subject_id: versionId,
-      details_json: JSON.stringify({ source: opts?.sourceLocator ?? bundlePathOrZip }),
-      created_at: now
-    });
-    await this.recordTelemetry({
-      eventType: 'skill.imported',
-      subjectType: 'skill_version',
-      subjectId: versionId,
-      details: { source: opts?.sourceLocator ?? bundlePathOrZip, skillId, versionHash, riskTotal, verdict }
-    });
-
-    return {
-      skillId,
-      versionId,
-      versionHash,
-      receiptPath,
-      riskTotal,
-      verdict
-    };
   }
 
   inventory(query: InventoryQuery = {}): InventoryRecord[] {
@@ -850,7 +1067,7 @@ export class SkillVaultManager {
     return summary;
   }
 
-  async syncInstalledSkills(): Promise<{ discovered: SyncDiscoveryRecord[] }> {
+  private async discoverInstalledSkills(): Promise<SyncDiscoveryRecord[]> {
     const discovered: SyncDiscoveryRecord[] = [];
     for (const adapter of this.listAdapters().filter((entry) => entry.isEnabled)) {
       const candidates: Array<{ scope: InstallScope; dir: string }> = [
@@ -863,7 +1080,7 @@ export class SkillVaultManager {
         if (!stat?.isDirectory()) continue;
         const children = await fs.readdir(candidate.dir, { withFileTypes: true });
         for (const child of children) {
-          if (!child.isDirectory()) continue;
+          if (!child.isDirectory() && !child.isSymbolicLink()) continue;
           const skillDir = path.join(candidate.dir, child.name);
           const manifestFound = await Promise.any(
             MANIFEST_FILENAMES.map((manifest) => fs.stat(path.join(skillDir, manifest)).then(() => true))
@@ -878,12 +1095,174 @@ export class SkillVaultManager {
         }
       }
     }
+    return discovered.sort((a, b) => {
+      const skillCmp = a.skillId.localeCompare(b.skillId);
+      if (skillCmp !== 0) return skillCmp;
+      const adapterCmp = a.adapterId.localeCompare(b.adapterId);
+      if (adapterCmp !== 0) return adapterCmp;
+      const scopeCmp = a.scope.localeCompare(b.scope);
+      if (scopeCmp !== 0) return scopeCmp;
+      return a.installedPath.localeCompare(b.installedPath);
+    });
+  }
+
+  private async readManifestFromInstalledSkill(skillDir: string): Promise<{ name?: string; description?: string }> {
+    for (const manifestFilename of MANIFEST_FILENAMES) {
+      const manifestPath = path.join(skillDir, manifestFilename);
+      const manifestText = await fs.readFile(manifestPath, 'utf8').catch(() => null);
+      if (!manifestText) continue;
+      return this.parseManifestFrontmatter(manifestText);
+    }
+    return {};
+  }
+
+  private async inferUnmanagedFilesystemMetadata(
+    skillId: string,
+    installations: SyncDiscoveryRecord[]
+  ): Promise<Pick<FilesystemSkillRecord, 'name' | 'sourceType' | 'sourceLocator' | 'versionHash'>> {
+    const installPaths = [...new Set(installations.map((entry) => entry.installedPath))].sort((a, b) => a.localeCompare(b));
+    if (installPaths.length === 0) {
+      return {
+        name: skillId,
+        sourceType: 'filesystem',
+        sourceLocator: null,
+        versionHash: null
+      };
+    }
+
+    const resolvedPaths: string[] = [];
+    for (const installPath of installPaths) {
+      const resolved = await fs.realpath(installPath).catch(() => installPath);
+      resolvedPaths.push(path.resolve(resolved));
+    }
+    const uniqueResolvedPaths = [...new Set(resolvedPaths)].sort((a, b) => a.localeCompare(b));
+    const sourceLocator = uniqueResolvedPaths.length > 1
+      ? `${uniqueResolvedPaths[0]} (+${uniqueResolvedPaths.length - 1} more)`
+      : uniqueResolvedPaths[0];
+    const canonicalPath = uniqueResolvedPaths[0];
+
+    const manifest = await this.readManifestFromInstalledSkill(canonicalPath);
+    const inferredName = manifest.name?.trim() ? manifest.name.trim() : skillId;
+    const versionHash = await this.hashDirectoryTree(canonicalPath).catch(() => null);
+
+    return {
+      name: inferredName,
+      sourceType: 'filesystem',
+      sourceLocator,
+      versionHash
+    };
+  }
+
+  async syncInstalledSkills(): Promise<{ discovered: SyncDiscoveryRecord[] }> {
+    const discovered = await this.discoverInstalledSkills();
     await this.recordTelemetry({
       eventType: 'skills.sync.completed',
       subjectType: 'vault',
       details: { discovered: discovered.length }
     });
     return { discovered };
+  }
+
+  async filesystemInventory(): Promise<FilesystemInventory> {
+    const discovered = await this.discoverInstalledSkills();
+    const inventory = this.inventory();
+    const inventoryBySkillId = new Map(inventory.map((item) => [item.id, item]));
+    const discoveredBySkillId = new Map<string, SyncDiscoveryRecord[]>();
+    for (const install of discovered) {
+      const list = discoveredBySkillId.get(install.skillId) ?? [];
+      list.push(install);
+      discoveredBySkillId.set(install.skillId, list);
+    }
+
+    const deploymentRows = this.db.listDeployments()
+      .filter((row) => row.status === 'deployed');
+    const managedDeploymentKeys = new Set(
+      deploymentRows.map((row) => `${row.skillId}|${row.adapterId}|${row.installScope}|${path.resolve(row.installedPath)}`)
+    );
+
+    const bySkillId = new Map<string, FilesystemSkillRecord>();
+    for (const managedSkill of inventory) {
+      bySkillId.set(managedSkill.id, {
+        skillId: managedSkill.id,
+        name: managedSkill.name,
+        sourceType: managedSkill.source_type,
+        sourceLocator: managedSkill.source_locator,
+        versionHash: managedSkill.version_hash,
+        riskTotal: managedSkill.risk_total,
+        verdict: managedSkill.verdict,
+        managed: true,
+        installations: []
+      });
+    }
+
+    for (const install of discovered) {
+      const current = bySkillId.get(install.skillId);
+      if (!current) {
+        bySkillId.set(install.skillId, {
+          skillId: install.skillId,
+          name: install.skillId,
+          sourceType: null,
+          sourceLocator: null,
+          versionHash: null,
+          riskTotal: null,
+          verdict: null,
+          managed: false,
+          installations: []
+        });
+      }
+      const existing = bySkillId.get(install.skillId)!;
+      const installation: FilesystemInstallationRecord = {
+        adapterId: install.adapterId,
+        scope: install.scope,
+        installedPath: install.installedPath,
+        managedDeployment: managedDeploymentKeys.has(
+          `${install.skillId}|${install.adapterId}|${install.scope}|${path.resolve(install.installedPath)}`
+        )
+      };
+      existing.installations.push(installation);
+
+      if (inventoryBySkillId.has(install.skillId)) {
+        existing.managed = true;
+      }
+    }
+
+    for (const [skillId, skill] of bySkillId) {
+      if (skill.managed) continue;
+      const installs = discoveredBySkillId.get(skillId) ?? [];
+      const inferred = await this.inferUnmanagedFilesystemMetadata(skillId, installs);
+      skill.name = inferred.name;
+      skill.sourceType = inferred.sourceType;
+      skill.sourceLocator = inferred.sourceLocator;
+      skill.versionHash = inferred.versionHash;
+    }
+
+    const skills = [...bySkillId.values()]
+      .map((skill) => ({
+        ...skill,
+        installations: [...skill.installations].sort((a, b) => {
+          const adapterCmp = a.adapterId.localeCompare(b.adapterId);
+          if (adapterCmp !== 0) return adapterCmp;
+          const scopeCmp = a.scope.localeCompare(b.scope);
+          if (scopeCmp !== 0) return scopeCmp;
+          return a.installedPath.localeCompare(b.installedPath);
+        })
+      }))
+      .sort((a, b) => a.skillId.localeCompare(b.skillId));
+
+    const totals = {
+      managedSkills: skills.filter((skill) => skill.managed).length,
+      unmanagedSkills: skills.filter((skill) => !skill.managed).length,
+      installations: skills.reduce((sum, skill) => sum + skill.installations.length, 0),
+      adaptersScanned: this.listAdapters().filter((entry) => entry.isEnabled).length
+    };
+
+    await this.recordTelemetry({
+      eventType: 'skills.filesystem_inventory.completed',
+      subjectType: 'vault',
+      details: totals
+    });
+
+    return { totals, skills };
   }
 
   async discover(query: string): Promise<DiscoveryResult[]> {
