@@ -1,9 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
-
 :root {
-  --font-display: 'IBM Plex Sans', 'Avenir Next', sans-serif;
-  --font-body: 'IBM Plex Sans', 'Avenir Next', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  --font-display: 'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: 'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
 
   --bg-canvas: #0f171a;
   --bg-surface: #142026;
@@ -24,6 +22,7 @@
   --radius-md: 12px;
   --radius-sm: 8px;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
 }
 
 * {
@@ -52,10 +51,37 @@ a {
   text-underline-offset: 2px;
 }
 
+a:focus-visible {
+  outline: 2px solid var(--accent-alt);
+  outline-offset: 2px;
+}
+
 .app-shell {
   padding: 20px;
   display: grid;
   gap: 16px;
+}
+
+.skip-link {
+  position: absolute;
+  top: 10px;
+  left: 16px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  transform: translateY(-180%);
+  transition: transform 140ms ease;
+  background: var(--bg-panel-soft);
+  color: var(--fg-main);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 .topbar {
@@ -123,6 +149,7 @@ a {
   width: 100%;
   text-align: left;
   padding: 10px 12px;
+  min-height: 44px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.01);
@@ -282,6 +309,11 @@ a {
   flex-wrap: wrap;
 }
 
+.row-field {
+  min-width: min(100%, 420px);
+  flex: 1 1 300px;
+}
+
 .row.spread {
   justify-content: space-between;
 }
@@ -291,19 +323,52 @@ a {
   align-items: center;
   gap: 8px;
   min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 8px 10px;
 }
 
 .toggle-row input[type='checkbox'] {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 44px;
+  min-width: 44px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: rgba(15, 23, 27, 0.92);
+  accent-color: var(--accent);
+}
+
+.toggle-row input[type='checkbox']::before {
+  content: '';
   width: 18px;
   height: 18px;
+  border-radius: 5px;
+  background: rgba(122, 196, 255, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(122, 196, 255, 0.56);
+}
+
+.toggle-row input[type='checkbox']:checked::before {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 4px #0f1518;
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.02);
   color: var(--fg-main);
-  padding: 6px 11px;
+  padding: 0 14px;
   cursor: pointer;
 }
 
@@ -323,6 +388,10 @@ a {
   cursor: pointer;
 }
 
+.button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
 .button.secondary {
   background: linear-gradient(90deg, #7ac4ff, #99d4ff);
 }
@@ -339,6 +408,7 @@ a {
 .button:focus-visible,
 .chip:focus-visible,
 .nav-button:focus-visible,
+.touch-link:focus-visible,
 .input:focus-visible,
 .select:focus-visible,
 .toggle-row input:focus-visible {
@@ -377,24 +447,48 @@ code {
   border: 0;
 }
 
+.touch-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+}
+
 @media (max-width: 1024px) {
   .grid {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
-    overflow-x: auto;
+    overflow: visible;
     padding-bottom: 8px;
   }
 
   .nav-button {
-    min-width: 190px;
+    min-width: 0;
     margin-bottom: 0;
   }
 
   .panel {
     min-height: 0;
+  }
+}
+
+@media (max-width: 540px) {
+  .sidebar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

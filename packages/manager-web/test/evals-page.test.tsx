@@ -310,12 +310,14 @@ describe('evals page', () => {
     await screen.findByRole('heading', { level: 2, name: 'Evals + Bench' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Skill Benchmarks' }));
+    await screen.findByText('Benchmark Run Playbook');
     await screen.findByText('Recent Benchmark Runs');
     fireEvent.change(screen.getByLabelText('Benchmark Config'), { target: { value: '/workspace/bench/example.yaml' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Run Benchmark/i }));
     await screen.findByText('Condition Pass Rates');
     await screen.findByText('curated_skill - no_skill');
+    await screen.findByText('How to Use These Deltas');
 
     fireEvent.click(screen.getByRole('button', { name: /Open run JSON/i }));
     await waitFor(() => {

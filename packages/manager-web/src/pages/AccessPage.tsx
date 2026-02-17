@@ -81,12 +81,16 @@ export function AccessPage() {
 
       <h3>Apply Token</h3>
       <form onSubmit={onApplyToken} className="row">
-        <input
-          className="input"
-          value={localToken}
-          onChange={(event) => setLocalToken(event.target.value)}
-          placeholder="Paste bearer token"
-        />
+        <label className="field row-field" htmlFor="apply-token-input">
+          <span className="sr-only">Bearer token</span>
+          <input
+            id="apply-token-input"
+            className="input"
+            value={localToken}
+            onChange={(event) => setLocalToken(event.target.value)}
+            placeholder="Paste bearer token"
+          />
+        </label>
         <button className="button secondary" type="submit">Use Token</button>
       </form>
 

@@ -30,6 +30,39 @@ interface DeployResponse {
   deployments?: Array<{ adapterId: string; status: string }>;
 }
 
+const DISCOVERY_PRESETS = [
+  { id: 'benchmark', label: 'Benchmark-ready skills', query: 'benchmark eval deterministic verifier skill' },
+  { id: 'security', label: 'Security-focused skills', query: 'security scanner policy receipt verification' },
+  { id: 'automation', label: 'Cross-tool automation', query: 'multi tool workflow automation codex cursor claude' },
+  { id: 'docs', label: 'Documentation helpers', query: 'docs changelog release notes markdown' }
+] as const;
+
+const DISCOVERY_PLAYBOOKS = [
+  {
+    id: 'standardize',
+    title: 'Standardize prompts across coding tools',
+    detail: 'Discover one candidate skill, import locally, then deploy through selected adapters after trust checks.'
+  },
+  {
+    id: 'safety',
+    title: 'Screen community skills before rollout',
+    detail: 'Use URL import for discovery, require checklist confirmation, and rely on deterministic scan + receipt artifacts.'
+  },
+  {
+    id: 'measure',
+    title: 'Validate impact before broad rollout',
+    detail: 'Run benchmark mode with no_skill, curated_skill, and self_generated_skill before shipping to multiple tools.'
+  }
+] as const;
+
+const URL_SECURITY_CHECKLIST = [
+  { id: 'reviewedSource', label: 'I reviewed the source repository and maintainer trust signals.' },
+  { id: 'reviewedCapabilities', label: 'I understand which commands, prompts, or tool actions this skill can trigger.' },
+  { id: 'confirmedPolicy', label: 'I will only deploy after deterministic scan findings and receipt verification.' }
+] as const;
+
+type UrlChecklistState = Record<(typeof URL_SECURITY_CHECKLIST)[number]['id'], boolean>;
+
 export function DiscoverPage() {
   const [query, setQuery] = useState('skill manager');
   const [importInput, setImportInput] = useState('');
@@ -37,6 +70,11 @@ export function DiscoverPage() {
   const [selectedAdapter, setSelectedAdapter] = useState('*');
   const [scope, setScope] = useState<'project' | 'global'>('project');
   const [mode, setMode] = useState<'copy' | 'symlink'>('symlink');
+  const [urlChecklist, setUrlChecklist] = useState<UrlChecklistState>({
+    reviewedSource: false,
+    reviewedCapabilities: false,
+    confirmedPolicy: false
+  });
 
   const discoverMutation = useMutation({
     mutationFn: () => apiPost<DiscoverResponse>('/discover', { query })
@@ -57,11 +95,19 @@ export function DiscoverPage() {
     [adaptersQuery.data]
   );
 
+  const trimmedImportInput = importInput.trim();
+  const isUrlImport = /^https?:\/\//i.test(trimmedImportInput);
+  const checklistComplete = URL_SECURITY_CHECKLIST.every((item) => urlChecklist[item.id]);
+  const importBlockedByChecklist = isUrlImport && !checklistComplete;
+
   const importMutation = useMutation({
     mutationFn: async () => {
       const normalized = importInput.trim();
       if (!normalized) {
         throw new Error('Enter a local bundle path or a supported URL before importing.');
+      }
+      if (/^https?:\/\//i.test(normalized) && !URL_SECURITY_CHECKLIST.every((item) => urlChecklist[item.id])) {
+        throw new Error('Complete the URL import security checklist before importing from remote discovery sources.');
       }
 
       const imported = await apiPost<ImportResponse>('/skills/import', {
@@ -93,6 +139,10 @@ export function DiscoverPage() {
     importMutation.mutate();
   };
 
+  const toggleChecklistItem = (id: keyof UrlChecklistState) => {
+    setUrlChecklist((current) => ({ ...current, [id]: !current[id] }));
+  };
+
   return (
     <PageShell
       title="Discover & Import"
@@ -104,11 +154,35 @@ export function DiscoverPage() {
           <article key={source.id} className="record-card">
             <h3>{source.label}</h3>
             <p className="table-subtle">{source.description}</p>
-            <p><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a></p>
+            <p><a className="touch-link" href={source.url} target="_blank" rel="noreferrer">{source.url}</a></p>
             <p className="table-subtle">{source.importHint}</p>
             <button className="button secondary" type="button" onClick={() => setImportInput(source.url)}>
               Use URL
             </button>
+          </article>
+        ))}
+      </div>
+
+      <h3>Discovery Intent Presets</h3>
+      <div className="row">
+        {DISCOVERY_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            className={`chip ${query === preset.query ? 'active' : ''}`}
+            type="button"
+            onClick={() => setQuery(preset.query)}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
+      <h3>Discovery Playbooks</h3>
+      <div className="card-grid">
+        {DISCOVERY_PLAYBOOKS.map((playbook) => (
+          <article key={playbook.id} className="record-card">
+            <h3>{playbook.title}</h3>
+            <p>{playbook.detail}</p>
           </article>
         ))}
       </div>
@@ -148,7 +222,7 @@ export function DiscoverPage() {
                 <td>{row.installs ?? '-'}</td>
                 <td>
                   {row.url
-                    ? <a href={row.url} target="_blank" rel="noreferrer">{row.url}</a>
+                    ? <a className="touch-link" href={row.url} target="_blank" rel="noreferrer">{row.url}</a>
                     : <span>-</span>}
                 </td>
                 <td>
@@ -173,6 +247,33 @@ export function DiscoverPage() {
         <p>SkillVault imports locally, runs deterministic security scanning, writes trust receipts, then allows controlled deployment.</p>
         <p className="table-subtle">Scan for security always, especially before cross-tool rollout.</p>
       </div>
+
+      <div className="record-card">
+        <h3>URL Import Security Checklist</h3>
+        <p className="table-subtle">Remote discovery is powerful, but only imported URLs require this checklist before execution.</p>
+        <div className="form-grid">
+          {URL_SECURITY_CHECKLIST.map((item) => (
+            <label key={item.id} className="toggle-row">
+              <input
+                type="checkbox"
+                checked={urlChecklist[item.id]}
+                onChange={() => toggleChecklistItem(item.id)}
+              />
+              {item.label}
+            </label>
+          ))}
+        </div>
+        {isUrlImport ? (
+          <p className="table-subtle">
+            {checklistComplete
+              ? 'Checklist complete. URL import is ready for deterministic scan + receipt.'
+              : 'Checklist incomplete. URL import remains blocked until all items are confirmed.'}
+          </p>
+        ) : (
+          <p className="table-subtle">Local path imports still run deterministic scan + receipt, but checklist confirmation is optional.</p>
+        )}
+      </div>
+
       <form onSubmit={onImport} className="form-grid">
         <label className="field">
           URL or Local Path
@@ -225,11 +326,16 @@ export function DiscoverPage() {
           </div>
         ) : null}
 
-        <button className="button" type="submit">
+        <button className="button" type="submit" disabled={importMutation.isPending || importBlockedByChecklist || !trimmedImportInput}>
           {importMutation.isPending ? 'Running import...' : deployAfterImport ? 'Import and Deploy' : 'Import'}
         </button>
       </form>
 
+      {importBlockedByChecklist ? (
+        <p className="error-copy">
+          URL import is blocked until the security checklist is complete.
+        </p>
+      ) : null}
       {importMutation.error ? <p className="error-copy">{String(importMutation.error)}</p> : null}
       {importMutation.data ? <pre className="record-card">{JSON.stringify(importMutation.data, null, 2)}</pre> : null}
     </PageShell>

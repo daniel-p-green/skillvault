@@ -49,3 +49,30 @@
   2. `skillvault manager auth token create --principal <id> --role viewer|operator|admin`
   3. Run API with `SKILLVAULT_AUTH_MODE=required`
 - Expected result: protected routes require bearer token and role permission.
+
+## UC-7 Govern community skill discovery safely
+
+- Actor: Security-conscious power user
+- Workflow:
+  1. Discover candidate skills from local paths or public catalogs.
+  2. Import through manager flow with deterministic scan + receipt.
+  3. Block deploy by default when verdict is `FAIL`; use explicit override only for controlled incidents.
+- Expected result: discovery speed without skipping trust controls.
+
+## UC-8 Benchmark before cross-tool rollout
+
+- Actor: Developer maintaining prompts/skills across multiple assistants
+- Workflow:
+  1. Run `bench` with `no_skill`, `curated_skill`, and `self_generated_skill`.
+  2. Compare pass-rate deltas and error categories.
+  3. Promote only bundles with positive delta and acceptable failure profile.
+- Expected result: rollout decisions are evidence-based, reproducible, and auditable.
+
+## Research Inputs That Inform These Use Cases
+
+- [Vercel: How We Built Skills for v0 (February 9, 2026)](https://vercel.com/blog/how-we-built-skills-for-v0): demonstrates rapid growth of cross-tool skill ecosystems and the need for trust-aware review flows.
+- [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/): informs default-deny mindset and explicit controls around prompt/tool misuse risks.
+- [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework): supports governance framing for mapping, measuring, and managing deployment risk.
+- [OpenAI Evals Design Guide](https://platform.openai.com/docs/guides/evals-design): reinforces structured datasets and benchmark loops for model/skill quality validation.
+- [Anthropic Claude Code Overview](https://docs.anthropic.com/en/docs/claude-code/overview): highlights growing multi-tool workflows where skills/prompt assets must stay portable and managed.
+- [LangSmith Evaluations](https://docs.langchain.com/langsmith/evaluation): aligns with the importance of benchmark datasets, regression checks, and outcome-oriented reporting.
