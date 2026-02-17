@@ -1,0 +1,2 @@
+Self generated skill output with guardrails but limited trust details.
+The answer skips advanced provenance wording.

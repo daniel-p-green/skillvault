@@ -19,6 +19,15 @@ import { verifyBundle, verifyReceiptSignatureOnly } from './lib/verify.js';
 import { failGateFromFindings, gateFromBundle, gateFromReceipt } from './lib/gate.js';
 import { diffInputs } from './lib/diff.js';
 import { exportBundleToZip } from './lib/export.js';
+import {
+  BenchConfigError,
+  buildBenchReport,
+  loadBenchConfig,
+  parseBenchRunOutput,
+  renderBenchReportTable,
+  renderBenchRunTable,
+  runBenchSuite
+} from './bench/index.js';
 
 async function writeOutput(args: { out?: string | unknown }, content: string): Promise<void> {
   if (args.out) {
@@ -456,6 +465,93 @@ export async function main(argv = process.argv): Promise<number> {
 
         process.exitCode = report.validated ? 0 : 1;
       }
+    )
+    .command(
+      'bench',
+      'Benchmark deterministic task outcomes across no_skill / curated_skill / self_generated_skill conditions',
+      (benchCmd) =>
+        benchCmd
+          .command(
+            'run',
+            'Execute a benchmark suite from config and emit run results',
+            (cmd) =>
+              cmd.option('config', {
+                type: 'string',
+                demandOption: true,
+                describe: 'Path to benchmark config YAML/JSON'
+              }),
+            async (args) => {
+              try {
+                const loadedConfig = await loadBenchConfig(String(args.config));
+                const run = await runBenchSuite(loadedConfig, {
+                  deterministicOverride: args.deterministic ? true : undefined
+                });
+                const json = JSON.stringify(run, null, 2) + '\n';
+
+                if (args.format === 'table') {
+                  // In table mode, keep table on stdout while optionally writing full JSON to --out.
+                  if (args.out) {
+                    await fs.writeFile(String(args.out), json, 'utf8');
+                  }
+                  process.stdout.write(renderBenchRunTable(run));
+                  return;
+                }
+
+                if (args.out) {
+                  await fs.writeFile(String(args.out), json, 'utf8');
+                } else {
+                  process.stdout.write(json);
+                }
+              } catch (err) {
+                if (err instanceof BenchConfigError) {
+                  console.error(err.message);
+                  process.exitCode = 2;
+                  return;
+                }
+                throw err;
+              }
+            }
+          )
+          .command(
+            'report',
+            'Read benchmark run JSON and render aggregate report',
+            (cmd) =>
+              cmd.option('input', {
+                type: 'string',
+                demandOption: true,
+                describe: 'Path to benchmark run JSON'
+              }),
+            async (args) => {
+              try {
+                const raw = await fs.readFile(String(args.input), 'utf8');
+                const run = parseBenchRunOutput(raw);
+                const report = buildBenchReport(run);
+                const orderedConditionIds = run.conditions.map((condition) => condition.id);
+
+                if (args.format === 'table') {
+                  const out = renderBenchReportTable(report, orderedConditionIds);
+                  if (args.out) {
+                    await fs.writeFile(String(args.out), out, 'utf8');
+                  } else {
+                    process.stdout.write(out);
+                  }
+                  return;
+                }
+
+                const json = JSON.stringify(report, null, 2) + '\n';
+                if (args.out) {
+                  await fs.writeFile(String(args.out), json, 'utf8');
+                } else {
+                  process.stdout.write(json);
+                }
+              } catch (err) {
+                console.error(err instanceof Error ? err.message : String(err));
+                process.exitCode = 2;
+              }
+            }
+          )
+          .demandCommand(1, 'Provide a bench subcommand'),
+      async () => {}
     )
     .command(
       'manager',

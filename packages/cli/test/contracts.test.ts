@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CONTRACT_BENCH_REPORT_V1,
+  CONTRACT_BENCH_RUN_V1,
   CONTRACT_DIFF_V1,
   CONTRACT_EXPORT_V1,
   CONTRACT_GATE_V1,
@@ -25,6 +27,8 @@ describe('v0.1 JSON contracts', () => {
     expect(CONTRACT_GATE_V1).toBe('skillvault.gate.v1');
     expect(CONTRACT_DIFF_V1).toBe('skillvault.diff.v1');
     expect(CONTRACT_EXPORT_V1).toBe('skillvault.export.v1');
+    expect(CONTRACT_BENCH_RUN_V1).toBe('skillvault.bench.run.v1');
+    expect(CONTRACT_BENCH_REPORT_V1).toBe('skillvault.bench.report.v1');
   });
 
   it('uses the required verdict thresholds', () => {

@@ -15,6 +15,8 @@ export const CONTRACT_VERIFY_V1 = 'skillvault.verify.v1' as const;
 export const CONTRACT_GATE_V1 = 'skillvault.gate.v1' as const;
 export const CONTRACT_DIFF_V1 = 'skillvault.diff.v1' as const;
 export const CONTRACT_EXPORT_V1 = 'skillvault.export.v1' as const;
+export const CONTRACT_BENCH_RUN_V1 = 'skillvault.bench.run.v1' as const;
+export const CONTRACT_BENCH_REPORT_V1 = 'skillvault.bench.report.v1' as const;
 
 export type OutputFormat = 'json' | 'table';
 

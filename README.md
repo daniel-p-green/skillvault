@@ -5,6 +5,7 @@ SkillVault v0.3 is a local-first **skill trust + operations manager** for multi-
 It keeps the v0.1 deterministic trust layer and extends v0.2 manager flows with:
 - telemetry outbox and optional Weave export
 - deterministic eval datasets/runs/comparisons
+- deterministic benchmark mode for A/B skill condition evaluation
 - additive RBAC/token preparation for API access control
 - expanded manager GUI pages for telemetry, evals, and access
 - URL-based imports from common discovery sites (with scan + receipt creation)
@@ -74,7 +75,14 @@ node packages/cli/dist/cli.js manager eval datasets seed
 node packages/cli/dist/cli.js manager eval run --dataset default-manager-regression
 ```
 
-### 5) Start API + GUI
+### 5) Run benchmark mode (A/B skill evaluation)
+
+```bash
+node packages/cli/dist/cli.js bench run --config packages/cli/examples/bench-v0/bench.yaml --format table --out /tmp/bench-run.json --deterministic
+node packages/cli/dist/cli.js bench report --input /tmp/bench-run.json --format table
+```
+
+### 6) Start API + GUI
 
 ```bash
 npm run dev:api
@@ -85,7 +93,7 @@ npm run dev:manager
 
 Manager API defaults to `http://127.0.0.1:4646`.
 
-### 6) Discovery sources + filesystem inventory
+### 7) Discovery sources + filesystem inventory
 
 ```bash
 node packages/cli/dist/cli.js manager discover-sources
@@ -145,6 +153,10 @@ v0.3 telemetry export safety:
 - `skillvault diff`
 - `skillvault export`
 
+### Benchmark layer (v0.1)
+- `skillvault bench run`
+- `skillvault bench report`
+
 ### Manager layer (v0.3)
 - `skillvault manager init`
 - `skillvault manager adapters ...`
@@ -180,6 +192,7 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:4646/skills
 - CLI reference: [`docs/cli.md`](./docs/cli.md)
 - Policy schema: [`docs/policy.md`](./docs/policy.md)
 - Scoring: [`docs/scoring.md`](./docs/scoring.md)
+- Benchmarking: [`docs/benchmarking.md`](./docs/benchmarking.md)
 - JSON + manager schemas: [`docs/schemas.md`](./docs/schemas.md)
 - Product docs: [`docs/product/JTBD.md`](./docs/product/JTBD.md)
 - PRD v0.3: [`docs/PRD.md`](./docs/PRD.md)

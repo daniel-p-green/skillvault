@@ -2,8 +2,9 @@
 
 This document covers:
 1. v0.1 trust JSON contracts (still active in v0.3)
-2. manager v0.3 domain entities
-3. manager SQLite schema migrations through v0.3
+2. benchmark v0 JSON/config contracts
+3. manager v0.3 domain entities
+4. manager SQLite schema migrations through v0.3
 
 ## Trust contracts (v0.1, still active)
 
@@ -14,12 +15,29 @@ Contract IDs exported in `packages/cli/src/contracts.ts`:
 - `skillvault.gate.v1`
 - `skillvault.diff.v1`
 - `skillvault.export.v1`
+- `skillvault.bench.run.v1`
+- `skillvault.bench.report.v1`
 
 All trust outputs include:
 
 ```json
 { "contract_version": "0.1" }
 ```
+
+## Benchmark contracts (v0)
+
+Config schema id:
+- `skillvault.bench.config.v1`
+
+Run/report output contracts:
+- `skillvault.bench.run.v1`
+- `skillvault.bench.report.v1`
+
+Run output includes:
+- per-task results (`condition_id`, `task_id`, `passed`, `duration_ms`, `error_category`)
+- condition aggregates (`pass_rate`, sample counts, Wilson 95% interval)
+- required deltas (`curated_vs_no_skill`, `self_generated_vs_no_skill`)
+- `error_breakdown` grouped by condition and error category
 
 ## Receipt signature schema
 

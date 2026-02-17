@@ -1,7 +1,8 @@
 # CLI reference (v0.3)
 
-SkillVault ships two command families:
+SkillVault ships three command families:
 - **Trust layer (v0.1-compatible)**: deterministic scan/receipt/verify/gate/diff/export
+- **Benchmark layer (v0.1)**: reproducible A/B skill evaluations
 - **Manager layer (v0.3)**: local vault operations plus telemetry/evals/RBAC prep
 
 ## Global options
@@ -49,6 +50,27 @@ skillvault diff --a <input> --b <input> [--format json|table] [--deterministic]
 
 ```bash
 skillvault export <bundle_dir> --out bundle.zip [--policy policy.yaml] [--profile strict_v0]
+```
+
+---
+
+## Benchmark commands
+
+### `skillvault bench run`
+
+```bash
+skillvault bench run --config bench.yaml [--format json|table] [--out run.json] [--deterministic]
+```
+
+Notes:
+- `--format json` (default) emits full run JSON (to stdout or `--out`)
+- `--format table` emits a human-readable table to stdout
+- with `--format table --out <file>`, SkillVault writes full run JSON to `--out` while still printing the table
+
+### `skillvault bench report`
+
+```bash
+skillvault bench report --input bench-run.json [--format json|table] [--out report.txt]
 ```
 
 ---

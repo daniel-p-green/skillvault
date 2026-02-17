@@ -1,0 +1,2 @@
+Baseline output from no_skill condition.
+This answer is generic and does not reference policy controls.

@@ -1,0 +1,2 @@
+Curated skill output with explicit guardrails and deterministic handling.
+This response references receipt validation and offline verification behavior.

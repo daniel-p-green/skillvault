@@ -17,6 +17,7 @@ describe('docs smoke', () => {
       path.join(repoRoot, 'docs', 'cli.md'),
       path.join(repoRoot, 'docs', 'policy.md'),
       path.join(repoRoot, 'docs', 'scoring.md'),
+      path.join(repoRoot, 'docs', 'benchmarking.md'),
       path.join(repoRoot, 'docs', 'PRD.md'),
       path.join(repoRoot, 'docs', 'schemas.md'),
       path.join(repoRoot, 'docs', 'signing.md'),
@@ -56,6 +57,14 @@ describe('docs smoke', () => {
     ]) {
       expect(readme).toContain(managerCmd);
       expect(cli).toContain(managerCmd);
+    }
+
+    for (const benchCmd of [
+      'skillvault bench run',
+      'skillvault bench report'
+    ]) {
+      expect(readme).toContain(benchCmd);
+      expect(cli).toContain(benchCmd);
     }
   });
 

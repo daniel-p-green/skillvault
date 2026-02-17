@@ -1,0 +1,52 @@
+schema: skillvault.bench.config.v1
+
+metadata:
+  suite: v0-example
+  model_label: local-deterministic
+  environment_label: dev
+
+execution:
+  deterministic: true
+  retries: 0
+  seed: 42
+
+conditions:
+  - id: no_skill
+    bundle_path: ./conditions/no-skill
+  - id: curated_skill
+    bundle_path: ./conditions/curated-skill
+  - id: self_generated_skill
+    adapter:
+      id: stub
+      options:
+        bundle_path: ./conditions/self-generated-skill
+
+tasks:
+  - id: has_response_file
+    domain: answer_quality
+    timeout_ms: 1000
+    verifier:
+      type: function
+      function: bundle_file_exists
+      args:
+        path: answer.txt
+
+  - id: mentions_guardrails
+    domain: safety_alignment
+    timeout_ms: 1000
+    verifier:
+      type: function
+      function: bundle_file_contains
+      args:
+        path: answer.txt
+        contains: guardrails
+
+  - id: mentions_receipt
+    domain: trust_signals
+    timeout_ms: 1000
+    verifier:
+      type: function
+      function: bundle_file_contains
+      args:
+        path: answer.txt
+        contains: receipt
