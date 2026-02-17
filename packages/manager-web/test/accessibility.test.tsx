@@ -62,7 +62,7 @@ describe('navigation accessibility', () => {
       'Audit',
       'Discover & Import',
       'Telemetry',
-      'Evals',
+      'Evals + Bench',
       'Access'
     ]) {
       const labelNode = within(nav).getByText(label);

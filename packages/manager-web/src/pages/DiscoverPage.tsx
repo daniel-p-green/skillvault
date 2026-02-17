@@ -94,7 +94,10 @@ export function DiscoverPage() {
   };
 
   return (
-    <PageShell title="Discover & Import" subtitle="Find useful skill sources, paste a URL or local path, run the scan, and optionally deploy in one flow.">
+    <PageShell
+      title="Discover & Import"
+      subtitle="Discover skills across ecosystems, import locally, and always scan + receipt before any deploy."
+    >
       <h3>Common Discovery Sources</h3>
       <div className="card-grid">
         {(sourcesQuery.data?.sources ?? []).map((source) => (
@@ -165,6 +168,11 @@ export function DiscoverPage() {
       ) : null}
 
       <h3>Import and Optional Deploy</h3>
+      <div className="record-card">
+        <h3>Security-first flow</h3>
+        <p>SkillVault imports locally, runs deterministic security scanning, writes trust receipts, then allows controlled deployment.</p>
+        <p className="table-subtle">Scan for security always, especially before cross-tool rollout.</p>
+      </div>
       <form onSubmit={onImport} className="form-grid">
         <label className="field">
           URL or Local Path
@@ -182,7 +190,7 @@ export function DiscoverPage() {
             checked={deployAfterImport}
             onChange={(event) => setDeployAfterImport(event.target.checked)}
           />
-          Deploy immediately after successful import
+          Deploy immediately after successful import + scan
         </label>
 
         {deployAfterImport ? (

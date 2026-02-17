@@ -23,7 +23,10 @@ export function AuditPage() {
   const totals = auditQuery.data?.totals;
 
   return (
-    <PageShell title="Audit" subtitle="Stale scans, drifted installs, and trust anomalies across the full vault.">
+    <PageShell
+      title="Audit"
+      subtitle="Validate post-deploy health with stale-scan and drift checks so security posture stays current."
+    >
       {totals ? (
         <>
           <div className="card-grid">

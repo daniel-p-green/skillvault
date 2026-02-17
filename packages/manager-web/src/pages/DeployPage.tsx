@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { PageShell } from '../components/PageShell.js';
-import { apiGet, apiPost } from '../services/http.js';
+import { ApiRequestError, apiGet, apiPost } from '../services/http.js';
 
 interface SkillItem {
   id: string;
@@ -18,11 +18,22 @@ interface AdaptersResponse {
   adapters: Array<{ id: string; displayName: string; isEnabled: boolean }>;
 }
 
+interface DeployBlockedPayload {
+  code?: string;
+  message?: string;
+  skillId?: string;
+  verdict?: string;
+  riskTotal?: number;
+  overrideAllowed?: boolean;
+  remediation?: string;
+}
+
 export function DeployPage() {
   const [selectedSkill, setSelectedSkill] = useState('');
   const [selectedAdapter, setSelectedAdapter] = useState('*');
   const [scope, setScope] = useState<'project' | 'global'>('project');
   const [mode, setMode] = useState<'copy' | 'symlink'>('symlink');
+  const [allowRiskOverride, setAllowRiskOverride] = useState(false);
 
   const skillsQuery = useQuery({
     queryKey: ['skills'],
@@ -46,7 +57,8 @@ export function DeployPage() {
       return apiPost(`/skills/${selectedSkill}/deploy`, {
         adapter: selectedAdapter,
         scope,
-        mode
+        mode,
+        allowRiskOverride
       });
     }
   });
@@ -68,8 +80,19 @@ export function DeployPage() {
     deployMutation.mutate();
   };
 
+  const deployError = deployMutation.error;
+  const deployBlockedPayload =
+    deployError instanceof ApiRequestError &&
+    deployError.status === 409 &&
+    deployError.payload?.code === 'DEPLOY_BLOCKED_BY_TRUST'
+      ? (deployError.payload as DeployBlockedPayload)
+      : null;
+
   return (
-    <PageShell title="Deploy" subtitle="Select a skill, choose targets, and apply deploy or undeploy operations with immediate feedback.">
+    <PageShell
+      title="Deploy"
+      subtitle="Deploy vetted skills across tools with trust-aware guardrails, controlled overrides, and immediate status feedback."
+    >
       <form onSubmit={onDeploy} className="form-grid">
         <label className="field">
           Skill
@@ -111,6 +134,15 @@ export function DeployPage() {
           </select>
         </label>
 
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={allowRiskOverride}
+            onChange={(event) => setAllowRiskOverride(event.target.checked)}
+          />
+          Allow risk override (admin-only in required auth mode)
+        </label>
+
         <div className="row">
           <button className="button" type="submit">
             {deployMutation.isPending ? 'Deploying...' : 'Deploy'}
@@ -131,9 +163,24 @@ export function DeployPage() {
           Deploy <strong>{selectedSkill || '[skill]'}</strong> to <strong>{selectedAdapter}</strong> using <strong>{scope}</strong> scope and{' '}
           <strong>{mode}</strong> mode.
         </p>
+        <p className="table-subtle">Default behavior blocks deploy when latest trust verdict is FAIL.</p>
       </div>
 
-      {deployMutation.error ? <p className="error-copy">{String(deployMutation.error)}</p> : null}
+      {deployBlockedPayload ? (
+        <div className="record-card">
+          <h3>Deploy blocked by trust gate</h3>
+          <p>{deployBlockedPayload.message ?? 'Latest scan verdict is FAIL and deploy is blocked by default.'}</p>
+          <p>
+            <strong>Skill:</strong> <code>{deployBlockedPayload.skillId ?? selectedSkill}</code>
+          </p>
+          <p>
+            <strong>Verdict:</strong> {deployBlockedPayload.verdict ?? 'FAIL'} | <strong>Risk:</strong>{' '}
+            {deployBlockedPayload.riskTotal ?? 'n/a'}
+          </p>
+          <p>{deployBlockedPayload.remediation ?? 'Resolve scan findings or use an explicit admin override for emergency rollout.'}</p>
+        </div>
+      ) : null}
+      {deployMutation.error && !deployBlockedPayload ? <p className="error-copy">{String(deployMutation.error)}</p> : null}
       {undeployMutation.error ? <p className="error-copy">{String(undeployMutation.error)}</p> : null}
       {deployMutation.data ? <pre className="record-card">{JSON.stringify(deployMutation.data, null, 2)}</pre> : null}
       {undeployMutation.data ? <pre className="record-card">{JSON.stringify(undeployMutation.data, null, 2)}</pre> : null}

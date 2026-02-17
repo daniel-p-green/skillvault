@@ -49,7 +49,10 @@ export function SkillDetailPage() {
   const detail = detailQuery.data;
 
   return (
-    <PageShell title="Skill Detail" subtitle="Version lineage, scan findings, receipt metadata, and deployment matrix.">
+    <PageShell
+      title="Skill Detail"
+      subtitle="Inspect version lineage, security scan and receipt evidence, benchmark-readiness, and deploy status."
+    >
       <div className="row">
         <label className="field">
           Skill
@@ -81,6 +84,11 @@ export function SkillDetailPage() {
               <strong>Verdict:</strong>{' '}
               <span className={`tag ${(detail.skill.verdict ?? 'PASS').toLowerCase()}`}>{detail.skill.verdict ?? 'PASS'}</span>
             </p>
+            {detail.skill.verdict === 'FAIL' ? (
+              <p className="error-copy">
+                Deploy is blocked by default for this skill until scan findings are remediated or an explicit admin risk override is used.
+              </p>
+            ) : null}
           </div>
 
           <h3>Version Timeline</h3>

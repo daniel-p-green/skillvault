@@ -6,8 +6,9 @@ It keeps the v0.1 deterministic trust layer and extends v0.2 manager flows with:
 - telemetry outbox and optional Weave export
 - deterministic eval datasets/runs/comparisons
 - deterministic benchmark mode for A/B skill condition evaluation
+- trust-gated deploy blocking on `FAIL` scans with explicit override support
 - additive RBAC/token preparation for API access control
-- expanded manager GUI pages for telemetry, evals, and access
+- expanded manager GUI pages for telemetry, evals + benchmarks, and access
 - URL-based imports from common discovery sites (with scan + receipt creation)
 - filesystem master inventory showing source, version, and install locations
 
@@ -15,8 +16,9 @@ It keeps the v0.1 deterministic trust layer and extends v0.2 manager flows with:
 
 Teams run skills across Codex, Windsurf, OpenClaw, Cursor, Claude Code, and more. v0.3 adds continuous quality + access controls without giving up local-first operation:
 - import/inventory/deploy/audit still work offline
+- discover/import and scan/receipt workflows are explicit in the GUI
 - telemetry events can stay local (`jsonl`) or flush to Weave
-- regression checks are first-class (`eval seed/run/compare`)
+- regression and benchmark checks are first-class (`eval` + `bench`)
 - API auth can be enabled when needed (`SKILLVAULT_AUTH_MODE=required`)
 
 ## Requirements
@@ -63,6 +65,7 @@ node packages/cli/dist/cli.js manager auth bootstrap
 node packages/cli/dist/cli.js manager import /path/to/skill-bundle
 node packages/cli/dist/cli.js manager import https://skills.sh/owner/repo/skill
 node packages/cli/dist/cli.js manager deploy <skill_id> --adapter codex --scope project --mode symlink
+node packages/cli/dist/cli.js manager deploy <skill_id> --adapter codex --scope project --mode symlink --allow-risk-override
 node packages/cli/dist/cli.js manager audit --stale-days 14 --format table
 ```
 
@@ -122,7 +125,7 @@ Screenshots section for v0.3 pages:
 - Audit
 - Discover
 - Telemetry
-- Evals
+- Evals + Bench (Regression + Skill Benchmarks tabs)
 - Access
 
 ## Trust + Security Model
@@ -133,6 +136,8 @@ v0.3 preserves v0.1/v0.2 trust behavior:
 - `gate --receipt` verifies signature trust before policy evaluation
 - `gate --receipt --bundle` performs full integrity verification before gating
 - receipt policy is forced to `FAIL` when scan findings contain `error`
+- manager deploy is blocked by default when latest verdict is `FAIL`
+- risk override is explicit (`--allow-risk-override`) and admin-gated when auth mode is required
 
 v0.3 adds additive auth mode:
 - default: `SKILLVAULT_AUTH_MODE=off` (backward-compatible)

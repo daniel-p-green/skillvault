@@ -63,7 +63,7 @@ export function AccessPage() {
   const mode = meQuery.data?.authMode ?? 'off';
 
   return (
-    <PageShell title="Access" subtitle="RBAC mode, role definitions, and token workflows for API control.">
+    <PageShell title="Access" subtitle="RBAC and token controls for secure admin workflows, including deploy risk overrides.">
       <div className="card-grid">
         <article className="metric-card">
           <div className="metric-title">Auth Mode</div>
@@ -139,4 +139,3 @@ export function AccessPage() {
     </PageShell>
   );
 }
-

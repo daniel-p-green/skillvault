@@ -3,7 +3,7 @@
 This document covers:
 1. v0.1 trust JSON contracts (still active in v0.3)
 2. benchmark v0 JSON/config contracts
-3. manager v0.3 domain entities
+3. manager v0.3 entities and API payloads
 4. manager SQLite schema migrations through v0.3
 
 ## Trust contracts (v0.1, still active)
@@ -38,6 +38,17 @@ Run output includes:
 - condition aggregates (`pass_rate`, sample counts, Wilson 95% interval)
 - required deltas (`curated_vs_no_skill`, `self_generated_vs_no_skill`)
 - `error_breakdown` grouped by condition and error category
+
+Manager-core benchmark service types:
+- `BenchConfigEntry`
+- `BenchRunListEntry`
+- `BenchRunServiceResult`
+- `BenchRunOutput`
+- `BenchReportOutput`
+
+Manager-core benchmark storage layout:
+- `.skillvault/export/bench/runs/<runId>.json`
+- `.skillvault/export/bench/index.json`
 
 ## Receipt signature schema
 
@@ -98,6 +109,120 @@ Types live in `packages/manager-core/src/adapters/types.ts`.
 - `Role`
 - `Permission`
 - `ApiTokenRecord`
+
+### Deploy trust-gate error shape
+
+When deploy is blocked by trust policy, manager-core emits:
+
+```json
+{
+  "code": "DEPLOY_BLOCKED_BY_TRUST",
+  "skillId": "string",
+  "verdict": "FAIL",
+  "riskTotal": 92,
+  "overrideAllowed": true,
+  "remediation": "Resolve scan findings or explicitly use override permissions for emergency rollout."
+}
+```
+
+## Manager API payload contracts
+
+### Bench endpoints
+
+`GET /bench/configs` response:
+
+```json
+{
+  "configs": [
+    {
+      "id": "bench/example.yaml",
+      "name": "example.yaml",
+      "path": "/absolute/path/to/bench/example.yaml",
+      "source": "workspace"
+    }
+  ]
+}
+```
+
+`POST /bench/runs` request:
+
+```json
+{
+  "configPath": "bench/example.yaml",
+  "deterministic": true,
+  "save": true,
+  "label": "nightly"
+}
+```
+
+`POST /bench/runs` response:
+
+```json
+{
+  "runId": "uuid",
+  "runPath": "/absolute/path/to/.skillvault/export/bench/runs/uuid.json",
+  "run": {},
+  "report": {}
+}
+```
+
+`GET /bench/runs` response:
+
+```json
+{
+  "runs": [
+    {
+      "runId": "uuid",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "deterministic": true
+    }
+  ]
+}
+```
+
+`GET /bench/runs/:id` returns `BenchRunOutput`.
+
+`GET /bench/runs/:id/report` returns `BenchReportOutput`.
+
+### Deploy block and override behavior
+
+`POST /skills/:id/deploy` accepts:
+
+```json
+{
+  "adapter": "codex",
+  "scope": "project",
+  "mode": "symlink",
+  "allowRiskOverride": false
+}
+```
+
+Blocked deploy response:
+- status code: `409`
+- payload:
+
+```json
+{
+  "code": "DEPLOY_BLOCKED_BY_TRUST",
+  "message": "Deployment blocked for skill-id: latest trust verdict is FAIL (92).",
+  "skillId": "skill-id",
+  "verdict": "FAIL",
+  "riskTotal": 92,
+  "overrideAllowed": true,
+  "remediation": "Resolve scan findings or explicitly use override permissions for emergency rollout."
+}
+```
+
+Override denied (auth-required, non-admin):
+- status code: `403`
+- payload:
+
+```json
+{
+  "code": "DEPLOY_OVERRIDE_FORBIDDEN",
+  "error": "Risk override requires admin role"
+}
+```
 
 ## SQLite schema (`.skillvault/skillvault.db`)
 

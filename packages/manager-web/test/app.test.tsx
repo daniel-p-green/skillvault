@@ -162,10 +162,71 @@ describe('manager web app', () => {
     });
   });
 
+  it('renders trust-block remediation when deploy is denied by security gate', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        const path = url.replace(/^https?:\/\/[^/]+/, '');
+        const key = `${method} ${path}`;
+
+        if (key === 'POST /skills/alpha-skill/deploy') {
+          return createResponse({
+            code: 'DEPLOY_BLOCKED_BY_TRUST',
+            message: 'Deployment blocked for alpha-skill: latest trust verdict is FAIL (92).',
+            skillId: 'alpha-skill',
+            verdict: 'FAIL',
+            riskTotal: 92,
+            overrideAllowed: true,
+            remediation: 'Resolve scan findings or explicitly use override permissions for emergency rollout.'
+          }, 409);
+        }
+
+        const bodyByPath: Record<string, JsonValue> = {
+          '/health': { ok: true },
+          '/skills': {
+            skills: [
+              { id: 'alpha-skill', name: 'Alpha Skill', verdict: 'FAIL', risk_total: 92, version_hash: 'v1' }
+            ]
+          },
+          '/adapters': {
+            adapters: [
+              { id: 'codex', displayName: 'Codex', projectPath: '.agents/skills', globalPath: '~/.codex/skills', isEnabled: true }
+            ]
+          },
+          '/deployments': { deployments: [] },
+          '/audit/summary': {
+            totals: { skills: 1, deployments: 0, staleSkills: 0, driftedDeployments: 0 },
+            staleSkills: [],
+            driftedDeployments: []
+          }
+        };
+        const body = bodyByPath[path];
+        if (!body) {
+          return createResponse({ error: `No mock for ${key}` }, 404);
+        }
+        return createResponse(body);
+      })
+    );
+
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /^Deploy\b/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Deploy' });
+
+    fireEvent.change(screen.getByLabelText('Skill'), { target: { value: 'alpha-skill' } });
+    fireEvent.change(screen.getByLabelText('Adapter'), { target: { value: 'codex' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Deploy$/ }));
+
+    await screen.findByText('Deploy blocked by trust gate');
+    expect(screen.getByText(/Deployment blocked for alpha-skill/i)).toBeTruthy();
+    expect(screen.getByText(/Resolve scan findings/i)).toBeTruthy();
+  });
+
   it('filters adapters and shows status badges', async () => {
     renderApp();
     fireEvent.click(await screen.findByRole('button', { name: /Adapters/i }));
-    await screen.findByText('Enable target apps, validate install paths, and keep adapter configuration healthy.');
+    await screen.findByText('Configure the tool connectors used to discover, scan, benchmark, and deploy skills across your local stack.');
     fireEvent.click(screen.getByRole('button', { name: 'Disabled' }));
     await waitFor(() => {
       expect(screen.getByText('OpenClaw')).toBeTruthy();
@@ -176,7 +237,7 @@ describe('manager web app', () => {
     renderApp();
     fireEvent.click(await screen.findByRole('button', { name: /Installed Skills/i }));
     await screen.findByRole('heading', { level: 2, name: 'Installed Skills' });
-    expect(screen.getByText('Master inventory across the local filesystem: what exists, where it came from, its current version, and where each skill is installed.')).toBeTruthy();
+    expect(screen.getByText('Cross-tool filesystem inventory: origin, trust state, version, and install targets before benchmark and deploy decisions.')).toBeTruthy();
     expect(await screen.findByText('alpha-skill')).toBeTruthy();
     const pathMatches = await screen.findAllByText('/tmp/alpha');
     expect(pathMatches.length).toBeGreaterThan(0);

@@ -4,7 +4,7 @@ import type { SkillVaultManager } from './manager.js';
 export async function deploymentService(
   manager: SkillVaultManager,
   skillId: string,
-  opts: { adapter: string; scope: InstallScope; mode: InstallMode }
+  opts: { adapter: string; scope: InstallScope; mode: InstallMode; allowRiskOverride?: boolean }
 ) {
   return manager.deploy(skillId, opts);
 }

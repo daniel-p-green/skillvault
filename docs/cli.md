@@ -104,9 +104,13 @@ skillvault manager inventory [--risk PASS|WARN|FAIL] [--adapter <id>] [--search 
 ### Deploy and undeploy
 
 ```bash
-skillvault manager deploy <skill_id> --adapter <id|*> [--scope project|global] [--mode copy|symlink] [--root <path>]
+skillvault manager deploy <skill_id> --adapter <id|*> [--scope project|global] [--mode copy|symlink] [--allow-risk-override] [--root <path>]
 skillvault manager undeploy <skill_id> --adapter <id|*> [--scope project|global] [--root <path>]
 ```
+
+Deploy trust-gate behavior:
+- default: deploy is blocked when the latest trust verdict is `FAIL`
+- explicit override: `--allow-risk-override` bypasses the block (admin-gated in API auth-required mode)
 
 ### Audit and discover
 
@@ -161,9 +165,15 @@ skillvault manager serve [--port 4646] [--root <path>]
 - `GET /evals/datasets`
 - `POST /evals/runs`
 - `GET /evals/runs/:id`
+- `GET /bench/configs`
+- `POST /bench/runs`
+- `GET /bench/runs`
+- `GET /bench/runs/:id`
+- `GET /bench/runs/:id/report`
 - `GET /me`
 - `GET /rbac/roles`
 - `POST /auth/tokens`
 - `POST /sync`
+- `POST /skills/:id/deploy` (supports `allowRiskOverride`)
 
 When `SKILLVAULT_AUTH_MODE=required`, pass `Authorization: Bearer <token>` for protected routes.

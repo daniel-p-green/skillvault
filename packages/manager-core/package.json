@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "better-sqlite3": "^11.7.0"
+    "better-sqlite3": "^11.7.0",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",

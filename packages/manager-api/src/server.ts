@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 
 import type { InstallMode, InstallScope, TrustVerdict } from '@skillvault/manager-core';
-import { SkillVaultManager } from '@skillvault/manager-core';
+import { BenchServiceError, DeployBlockedByTrustError, SkillVaultManager } from '@skillvault/manager-core';
 import { createAuthGuard, createSessionGuard } from './auth/middleware.js';
 
 export interface CreateServerOptions {
@@ -22,6 +22,11 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     ['POST /evals/datasets/seed', 'write:evals'],
     ['POST /evals/runs', 'write:evals'],
     ['GET /evals/runs/:id', 'read:evals'],
+    ['GET /bench/configs', 'read:evals'],
+    ['POST /bench/runs', 'write:evals'],
+    ['GET /bench/runs', 'read:evals'],
+    ['GET /bench/runs/:id', 'read:evals'],
+    ['GET /bench/runs/:id/report', 'read:evals'],
     ['GET /skills', 'read:skills'],
     ['GET /skills/filesystem', 'read:skills'],
     ['POST /skills/import', 'write:skills'],
@@ -109,6 +114,79 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     return run;
   });
 
+  app.get('/bench/configs', async () => ({
+    configs: await manager.listBenchConfigs()
+  }));
+
+  app.post<{
+    Body: {
+      configPath: string;
+      deterministic?: boolean;
+      save?: boolean;
+      label?: string;
+    };
+  }>('/bench/runs', async (request, reply) => {
+    try {
+      const started = await manager.runBench({
+        configPath: request.body.configPath,
+        deterministic: request.body.deterministic,
+        save: request.body.save,
+        label: request.body.label
+      });
+      return started;
+    } catch (error) {
+      if (error instanceof BenchServiceError) {
+        reply.code(error.statusCode);
+        return {
+          code: error.code,
+          error: error.message,
+          details: error.details ?? {}
+        };
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Querystring: { limit?: string } }>('/bench/runs', async (request) => {
+    const limitRaw = Number(request.query.limit ?? 25);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 25;
+    return {
+      runs: await manager.listBenchRuns(limit)
+    };
+  });
+
+  app.get<{ Params: { id: string } }>('/bench/runs/:id', async (request, reply) => {
+    try {
+      return await manager.getBenchRun(request.params.id);
+    } catch (error) {
+      if (error instanceof BenchServiceError) {
+        reply.code(error.statusCode);
+        return {
+          code: error.code,
+          error: error.message,
+          details: error.details ?? {}
+        };
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Params: { id: string } }>('/bench/runs/:id/report', async (request, reply) => {
+    try {
+      return await manager.getBenchReport(request.params.id);
+    } catch (error) {
+      if (error instanceof BenchServiceError) {
+        reply.code(error.statusCode);
+        return {
+          code: error.code,
+          error: error.message,
+          details: error.details ?? {}
+        };
+      }
+      throw error;
+    }
+  });
+
   app.get<{
     Querystring: {
       risk?: TrustVerdict;
@@ -147,15 +225,41 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
   app.post<{
     Params: { id: string };
-    Body: { adapter: string; scope?: InstallScope; mode?: InstallMode };
-  }>('/skills/:id/deploy', async (request) => {
+    Body: { adapter: string; scope?: InstallScope; mode?: InstallMode; allowRiskOverride?: boolean };
+  }>('/skills/:id/deploy', async (request, reply) => {
     const scope = request.body.scope ?? 'project';
     const mode = request.body.mode ?? 'symlink';
-    return manager.deploy(request.params.id, {
-      adapter: request.body.adapter,
-      scope,
-      mode
-    });
+    const allowRiskOverride = Boolean(request.body.allowRiskOverride);
+    if (allowRiskOverride && manager.authMode() === 'required' && request.authSession?.roleName !== 'admin') {
+      reply.code(403);
+      return {
+        error: 'Risk override requires admin role',
+        code: 'DEPLOY_OVERRIDE_FORBIDDEN'
+      };
+    }
+
+    try {
+      return await manager.deploy(request.params.id, {
+        adapter: request.body.adapter,
+        scope,
+        mode,
+        allowRiskOverride
+      });
+    } catch (error) {
+      if (error instanceof DeployBlockedByTrustError) {
+        reply.code(409);
+        return {
+          code: error.code,
+          message: error.message,
+          skillId: error.skillId,
+          verdict: error.verdict,
+          riskTotal: error.riskTotal,
+          overrideAllowed: error.overrideAllowed,
+          remediation: error.remediation
+        };
+      }
+      throw error;
+    }
   });
 
   app.post<{

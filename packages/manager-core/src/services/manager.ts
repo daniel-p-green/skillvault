@@ -11,6 +11,10 @@ import type {
   AdapterSpec,
   ApiTokenRecord,
   AuditSummary,
+  BenchConfigEntry,
+  BenchRunListEntry,
+  BenchRunServiceResult,
+  DeployBlockedByTrustErrorShape,
   DeploymentRecord,
   DeploymentResult,
   DiscoveryResult,
@@ -28,11 +32,13 @@ import type {
   SkillVersionRecord,
   TrustVerdict
 } from '../adapters/types.js';
+import type { BenchReportOutput, BenchRunOutput } from '../bench/index.js';
 import { SkillVaultDb } from '../storage/db.js';
 import { comparePathBytes, computeBundleSha256, sha256Hex } from '../utils/hash.js';
 import { TelemetryService } from './telemetryService.js';
 import { WeaveExporter, weaveConfigFromEnv } from './weaveExporter.js';
 import { AuthService, type AuthSession } from './authService.js';
+import { BenchService } from './benchService.js';
 
 const execFileAsync = promisify(execFile);
 const MANIFEST_FILENAMES = ['SKILL.md', 'skill.md'];
@@ -182,6 +188,33 @@ export interface EvalRunReport {
   regressionFailed: boolean;
 }
 
+export class DeployBlockedByTrustError extends Error implements DeployBlockedByTrustErrorShape {
+  readonly code = 'DEPLOY_BLOCKED_BY_TRUST' as const;
+  readonly skillId: string;
+  readonly verdict = 'FAIL' as const;
+  readonly riskTotal: number;
+  readonly overrideAllowed: boolean;
+  readonly remediation: string;
+
+  constructor(input: {
+    skillId: string;
+    riskTotal: number;
+    overrideAllowed: boolean;
+    remediation?: string;
+    message?: string;
+  }) {
+    super(
+      input.message ??
+      `Deployment blocked for ${input.skillId}: latest trust verdict is FAIL (${input.riskTotal}).`
+    );
+    this.name = 'DeployBlockedByTrustError';
+    this.skillId = input.skillId;
+    this.riskTotal = input.riskTotal;
+    this.overrideAllowed = input.overrideAllowed;
+    this.remediation = input.remediation ?? 'Review scan findings and receipt metadata before deploying.';
+  }
+}
+
 export class SkillVaultManager {
   readonly rootDir: string;
   readonly skillVaultDir: string;
@@ -194,6 +227,7 @@ export class SkillVaultManager {
   readonly db: SkillVaultDb;
   readonly telemetry: TelemetryService;
   readonly auth: AuthService;
+  readonly bench: BenchService;
 
   constructor(rootDir = process.cwd()) {
     this.rootDir = path.resolve(rootDir);
@@ -207,6 +241,7 @@ export class SkillVaultManager {
     this.db = new SkillVaultDb(this.dbPath);
     this.telemetry = new TelemetryService(this.db, this.telemetryOutboxDir, () => this.nowIso());
     this.auth = new AuthService(this.db, () => this.nowIso());
+    this.bench = new BenchService(this.rootDir, this.exportDir, () => this.nowIso());
   }
 
   async init(): Promise<{ root: string; dbPath: string }> {
@@ -832,10 +867,78 @@ export class SkillVaultManager {
     return computeBundleSha256(files.sort((a, b) => comparePathBytes(a.path, b.path)));
   }
 
-  async deploy(skillId: string, opts: { adapter: string; scope: InstallScope; mode: InstallMode }): Promise<DeploymentResult[]> {
+  async deploy(
+    skillId: string,
+    opts: { adapter: string; scope: InstallScope; mode: InstallMode; allowRiskOverride?: boolean }
+  ): Promise<DeploymentResult[]> {
     const version = this.db.getCurrentSkillVersion(skillId);
     if (!version) {
       throw new Error(`Skill not found or has no current version: ${skillId}`);
+    }
+    const inventory = this.db.getCurrentSkillInventory(skillId);
+    if (!inventory) {
+      throw new Error(`Skill not found or has no inventory metadata: ${skillId}`);
+    }
+
+    const overrideAllowed = true;
+    const riskTotal = inventory.risk_total ?? 0;
+    if (inventory.verdict === 'FAIL' && !opts.allowRiskOverride) {
+      const blockedError = new DeployBlockedByTrustError({
+        skillId,
+        riskTotal,
+        overrideAllowed,
+        remediation: 'Resolve scan findings or explicitly use override permissions for emergency rollout.'
+      });
+      const nowBlocked = this.nowIso();
+      this.db.insertAuditEvent({
+        id: randomUUID(),
+        event_type: 'skill.deploy.blocked',
+        subject_type: 'skill_version',
+        subject_id: version.id,
+        details_json: JSON.stringify({
+          code: blockedError.code,
+          skillId,
+          verdict: blockedError.verdict,
+          riskTotal,
+          overrideAllowed
+        }),
+        created_at: nowBlocked
+      });
+      await this.recordTelemetry({
+        eventType: 'skill.deploy.blocked',
+        subjectType: 'skill_version',
+        subjectId: version.id,
+        details: {
+          code: blockedError.code,
+          skillId,
+          verdict: blockedError.verdict,
+          riskTotal,
+          overrideAllowed
+        }
+      });
+      throw blockedError;
+    }
+
+    if (inventory.verdict === 'FAIL' && opts.allowRiskOverride) {
+      const nowOverride = this.nowIso();
+      this.db.insertAuditEvent({
+        id: randomUUID(),
+        event_type: 'skill.deploy.override',
+        subject_type: 'skill_version',
+        subject_id: version.id,
+        details_json: JSON.stringify({
+          skillId,
+          verdict: 'FAIL',
+          riskTotal
+        }),
+        created_at: nowOverride
+      });
+      await this.recordTelemetry({
+        eventType: 'skill.deploy.override',
+        subjectType: 'skill_version',
+        subjectId: version.id,
+        details: { skillId, verdict: 'FAIL', riskTotal }
+      });
     }
 
     const sourceDir = this.getVersionDirectory(skillId, version.version_hash);
@@ -1647,6 +1750,42 @@ export class SkillVaultManager {
     });
 
     return comparison;
+  }
+
+  async listBenchConfigs(): Promise<BenchConfigEntry[]> {
+    return this.bench.listBenchConfigs();
+  }
+
+  async runBench(opts: {
+    configPath: string;
+    deterministic?: boolean;
+    save?: boolean;
+    label?: string;
+  }): Promise<BenchRunServiceResult> {
+    const result = await this.bench.runBench(opts);
+    await this.recordTelemetry({
+      eventType: 'bench.run.completed',
+      subjectType: 'bench_run',
+      subjectId: result.runId,
+      details: {
+        configPath: result.run.run.config_path,
+        deterministic: result.run.run.deterministic,
+        saved: result.saved
+      }
+    });
+    return result;
+  }
+
+  async listBenchRuns(limit = 25): Promise<BenchRunListEntry[]> {
+    return this.bench.listBenchRuns(limit);
+  }
+
+  async getBenchRun(runId: string): Promise<BenchRunOutput> {
+    return this.bench.getBenchRun(runId);
+  }
+
+  async getBenchReport(runId: string): Promise<BenchReportOutput> {
+    return this.bench.getBenchReport(runId);
   }
 
   authMode(): 'off' | 'required' {

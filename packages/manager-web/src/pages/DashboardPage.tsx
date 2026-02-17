@@ -51,7 +51,10 @@ export function DashboardPage() {
   const fail = skills.filter((item) => item.verdict === 'FAIL').length;
 
   return (
-    <PageShell title="Overview" subtitle="Current trust posture, deployment state, and drift risk in one place.">
+    <PageShell
+      title="Overview"
+      subtitle="Multi-tool skill manager view of discover → scan/receipt → eval/benchmark → deploy, with security signals always visible."
+    >
       <div className="card-grid">
         <article className="metric-card">
           <div className="metric-title">Skills in Vault</div>
@@ -71,6 +74,12 @@ export function DashboardPage() {
             {(auditQuery.data?.totals.staleSkills ?? 0)} / {(auditQuery.data?.totals.driftedDeployments ?? 0)}
           </div>
         </article>
+      </div>
+
+      <div className="record-card">
+        <h3>Security baseline</h3>
+        <p>SkillVault is local-first for power users managing skills across multiple tools, with deterministic scan + trust receipts before deploy.</p>
+        <p className="table-subtle">Scan for security always.</p>
       </div>
 
       <h3>Latest Skills</h3>

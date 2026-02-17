@@ -21,16 +21,16 @@ interface HealthResponse {
 }
 
 const NAV_ITEMS: Array<{ key: PageKey; label: string; description: string }> = [
-  { key: 'dashboard', label: 'Overview', description: 'Current risk and deployment health' },
-  { key: 'installed', label: 'Installed Skills', description: 'What is installed and where' },
-  { key: 'skill', label: 'Skill Detail', description: 'Version, receipt, and findings' },
-  { key: 'adapters', label: 'Adapters', description: 'Targets, paths, and status' },
-  { key: 'deploy', label: 'Deploy', description: 'Install or remove to selected apps' },
-  { key: 'audit', label: 'Audit', description: 'Drift and stale scan checks' },
-  { key: 'discover', label: 'Discover & Import', description: 'Find sources and import by URL' },
-  { key: 'telemetry', label: 'Telemetry', description: 'Export queue and event delivery' },
-  { key: 'evals', label: 'Evals', description: 'Regression checks before rollout' },
-  { key: 'access', label: 'Access', description: 'Auth mode, roles, and tokens' }
+  { key: 'dashboard', label: 'Overview', description: 'Pipeline status: discover, scan, benchmark, deploy' },
+  { key: 'installed', label: 'Installed Skills', description: 'Multi-tool inventory with source and install paths' },
+  { key: 'skill', label: 'Skill Detail', description: 'Version history, receipts, findings, and deploy readiness' },
+  { key: 'adapters', label: 'Adapters', description: 'Tool connectors, target paths, and adapter health' },
+  { key: 'deploy', label: 'Deploy', description: 'Controlled rollout with trust-gate enforcement' },
+  { key: 'audit', label: 'Audit', description: 'Drift and stale-scan anomalies across deployed skills' },
+  { key: 'discover', label: 'Discover & Import', description: 'Find skills, import locally, then scan + receipt' },
+  { key: 'telemetry', label: 'Telemetry', description: 'Event outbox and export delivery status' },
+  { key: 'evals', label: 'Evals + Bench', description: 'Regression and A/B benchmark outcomes by condition' },
+  { key: 'access', label: 'Access', description: 'Auth mode, RBAC roles, and token controls' }
 ];
 
 function pageForKey(key: PageKey) {
@@ -81,7 +81,7 @@ export function App() {
         </div>
         <h1 className="brand">SkillVault Manager</h1>
         <p className="subtitle">
-          Utility-first control plane for importing, scanning, and deploying skills across Codex, Windsurf, OpenClaw, Cursor, and Claude Code.
+          Skill manager for devs and power users: discover across ecosystems, scan and receipt for security always, benchmark outcomes, and deploy safely across tools.
         </p>
       </header>
 

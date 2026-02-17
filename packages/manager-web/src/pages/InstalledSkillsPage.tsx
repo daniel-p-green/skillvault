@@ -141,7 +141,7 @@ export function InstalledSkillsPage() {
   return (
     <PageShell
       title="Installed Skills"
-      subtitle="Master inventory across the local filesystem: what exists, where it came from, its current version, and where each skill is installed."
+      subtitle="Cross-tool filesystem inventory: origin, trust state, version, and install targets before benchmark and deploy decisions."
     >
       <div className="row spread">
         <div className="table-subtle">Use this view to reconcile managed and unmanaged skills before making changes.</div>

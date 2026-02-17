@@ -1,3 +1,5 @@
+import type { BenchReportOutput, BenchRunOutput } from '../bench/types.js';
+
 export type InstallScope = 'project' | 'global';
 export type InstallMode = 'copy' | 'symlink';
 
@@ -202,4 +204,44 @@ export interface ApiTokenRecord {
   createdAt: string;
   lastUsedAt: string | null;
   expiresAt: string | null;
+}
+
+export interface BenchConfigEntry {
+  id: string;
+  name: string;
+  path: string;
+  source: 'workspace';
+}
+
+export interface BenchRunListEntry {
+  runId: string;
+  runPath: string;
+  configPath: string;
+  label: string | null;
+  createdAt: string;
+  deterministic: boolean;
+  gitCommit: string | null;
+  conditionPassRates: Record<string, number>;
+  deltas: {
+    curated_vs_no_skill: number | null;
+    self_generated_vs_no_skill: number | null;
+  };
+}
+
+export interface BenchRunServiceResult {
+  runId: string;
+  runPath: string;
+  run: BenchRunOutput;
+  report: BenchReportOutput;
+  saved: boolean;
+}
+
+export interface DeployBlockedByTrustErrorShape {
+  code: 'DEPLOY_BLOCKED_BY_TRUST';
+  message: string;
+  skillId: string;
+  verdict: 'FAIL';
+  riskTotal: number;
+  overrideAllowed: boolean;
+  remediation: string;
 }

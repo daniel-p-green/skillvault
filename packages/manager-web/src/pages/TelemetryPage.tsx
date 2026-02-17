@@ -50,7 +50,10 @@ export function TelemetryPage() {
   const totals = statusQuery.data?.totals;
 
   return (
-    <PageShell title="Telemetry" subtitle="Outbox backlog, retry pressure, and export throughput for cloud-ready telemetry.">
+    <PageShell
+      title="Telemetry"
+      subtitle="Track benchmark, scan, and deploy events with local-first outbox visibility and optional export."
+    >
       <div className="card-grid">
         <article className="metric-card">
           <div className="metric-title">Total Events</div>
@@ -113,4 +116,3 @@ export function TelemetryPage() {
     </PageShell>
   );
 }
-

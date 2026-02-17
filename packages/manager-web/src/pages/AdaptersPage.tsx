@@ -63,7 +63,10 @@ export function AdaptersPage() {
   }, [adaptersQuery.data, filter]);
 
   return (
-    <PageShell title="Adapters" subtitle="Enable target apps, validate install paths, and keep adapter configuration healthy.">
+    <PageShell
+      title="Adapters"
+      subtitle="Configure the tool connectors used to discover, scan, benchmark, and deploy skills across your local stack."
+    >
       <div className="row spread">
         <div className="toggle-row" role="tablist" aria-label="Adapter filter">
           <button type="button" className={`chip ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All</button>

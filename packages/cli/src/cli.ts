@@ -7,6 +7,14 @@ import fs from 'node:fs/promises';
 
 import { startServer } from '@skillvault/manager-api';
 import {
+  BenchConfigError,
+  buildBenchReport,
+  loadBenchConfig,
+  parseBenchRunOutput,
+  renderBenchReportTable,
+  renderBenchRunTable,
+  runBenchSuite,
+  DeployBlockedByTrustError,
   SkillVaultManager,
   type AdapterSpec,
   type InstallMode,
@@ -19,15 +27,6 @@ import { verifyBundle, verifyReceiptSignatureOnly } from './lib/verify.js';
 import { failGateFromFindings, gateFromBundle, gateFromReceipt } from './lib/gate.js';
 import { diffInputs } from './lib/diff.js';
 import { exportBundleToZip } from './lib/export.js';
-import {
-  BenchConfigError,
-  buildBenchReport,
-  loadBenchConfig,
-  parseBenchRunOutput,
-  renderBenchReportTable,
-  renderBenchRunTable,
-  runBenchSuite
-} from './bench/index.js';
 
 async function writeOutput(args: { out?: string | unknown }, content: string): Promise<void> {
   if (args.out) {
@@ -804,20 +803,43 @@ export async function main(argv = process.argv): Promise<number> {
                   default: 'symlink',
                   describe: 'Install mode'
                 })
+                .option('allow-risk-override', {
+                  type: 'boolean',
+                  default: false,
+                  describe: 'Allow deploying FAIL-verdict skills (requires explicit authorization in API mode)'
+                })
                 .option('root', {
                   type: 'string',
                   describe: 'Workspace root (defaults to cwd)'
                 }),
             async (args) => {
               const root = requireManagerRoot(args);
-              const deployments = await withManager(root, async (manager) =>
-                manager.deploy(String(args.skill_id), {
-                  adapter: String(args.adapter),
-                  scope: args.scope as InstallScope,
-                  mode: args.mode as InstallMode
-                })
-              );
-              await writeOutput(args, `${JSON.stringify({ deployments }, null, 2)}\n`);
+              try {
+                const deployments = await withManager(root, async (manager) =>
+                  manager.deploy(String(args.skill_id), {
+                    adapter: String(args.adapter),
+                    scope: args.scope as InstallScope,
+                    mode: args.mode as InstallMode,
+                    allowRiskOverride: Boolean(args.allowRiskOverride)
+                  })
+                );
+                await writeOutput(args, `${JSON.stringify({ deployments }, null, 2)}\n`);
+              } catch (error) {
+                if (error instanceof DeployBlockedByTrustError) {
+                  process.exitCode = 1;
+                  await writeOutput(args, `${JSON.stringify({
+                    code: error.code,
+                    message: error.message,
+                    skillId: error.skillId,
+                    verdict: error.verdict,
+                    riskTotal: error.riskTotal,
+                    overrideAllowed: error.overrideAllowed,
+                    remediation: error.remediation
+                  }, null, 2)}\n`);
+                  return;
+                }
+                throw error;
+              }
             }
           )
           .command(

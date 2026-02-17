@@ -8,12 +8,23 @@ Benchmark mode adds reproducible A/B skill evaluation to the CLI:
 
 It runs deterministic task verifiers across each condition, then reports pass/fail, timing, error categories, and deltas.
 
+In manager mode, the same benchmark engine is shared by CLI and GUI/API.
+
 ## Commands
 
 ```bash
 skillvault bench run --config bench.yaml --format json|table [--out run.json] [--deterministic]
 skillvault bench report --input run.json --format json|table [--out report.txt]
 ```
+
+Manager API and GUI surfaces:
+- `GET /bench/configs`
+- `POST /bench/runs`
+- `GET /bench/runs`
+- `GET /bench/runs/:id`
+- `GET /bench/runs/:id/report`
+
+The web UI exposes this under **Evals + Bench** → **Skill Benchmarks**.
 
 ### One-command JSON + table pattern
 
@@ -74,6 +85,14 @@ Notes:
 - `self_generated_skill` must include either `bundle_path` or `adapter.id=stub` with `adapter.options.bundle_path`
 - `tasks` must be non-empty
 
+Config discovery roots for manager GUI/API:
+- `<repo>/bench/`
+- `<repo>/benchmarks/`
+- `<repo>/packages/cli/examples/bench-v0/`
+
+Manual config paths are allowed if they resolve to local workspace files.
+URL config paths are rejected.
+
 ## Output schema (`skillvault.bench.run.v1`)
 
 Run output JSON includes:
@@ -92,6 +111,10 @@ Error categories:
 - `verification_failed`
 - `timeout`
 - `execution_error`
+
+Benchmark run persistence (manager mode):
+- run files: `.skillvault/export/bench/runs/<runId>.json`
+- index file: `.skillvault/export/bench/index.json`
 
 ## Determinism behavior
 

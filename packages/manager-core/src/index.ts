@@ -10,5 +10,7 @@ export * from './services/discoveryService.js';
 export * from './services/telemetryService.js';
 export * from './services/weaveExporter.js';
 export * from './services/evalService.js';
+export * from './services/benchService.js';
 export * from './services/authService.js';
+export * from './bench/index.js';
 export * from './storage/db.js';

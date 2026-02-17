@@ -58,6 +58,46 @@ describe('manager api auth mode', () => {
         payload: { path: bundleDir }
       });
       expect(operatorImport.statusCode).toBe(200);
+      const imported = operatorImport.json() as { skillId: string; versionId: string };
+
+      const mutationManager = new SkillVaultManager(root);
+      await mutationManager.init();
+      mutationManager.db.db.prepare(`
+        UPDATE scan_runs
+        SET verdict = 'FAIL', risk_total = 92
+        WHERE skill_version_id = ?
+      `).run(imported.versionId);
+      await mutationManager.close();
+
+      const blockedDeploy = await app.inject({
+        method: 'POST',
+        url: `/skills/${imported.skillId}/deploy`,
+        headers: { authorization: `Bearer ${operator.token}` },
+        payload: { adapter: 'codex', scope: 'project', mode: 'symlink' }
+      });
+      expect(blockedDeploy.statusCode).toBe(409);
+      const blockedBody = blockedDeploy.json() as { code: string };
+      expect(blockedBody.code).toBe('DEPLOY_BLOCKED_BY_TRUST');
+
+      const forbiddenOverride = await app.inject({
+        method: 'POST',
+        url: `/skills/${imported.skillId}/deploy`,
+        headers: { authorization: `Bearer ${operator.token}` },
+        payload: { adapter: 'codex', scope: 'project', mode: 'symlink', allowRiskOverride: true }
+      });
+      expect(forbiddenOverride.statusCode).toBe(403);
+      const forbiddenBody = forbiddenOverride.json() as { code: string };
+      expect(forbiddenBody.code).toBe('DEPLOY_OVERRIDE_FORBIDDEN');
+
+      const adminOverride = await app.inject({
+        method: 'POST',
+        url: `/skills/${imported.skillId}/deploy`,
+        headers: { authorization: `Bearer ${admin.token}` },
+        payload: { adapter: 'codex', scope: 'project', mode: 'symlink', allowRiskOverride: true }
+      });
+      expect(adminOverride.statusCode).toBe(200);
+      const adminOverrideBody = adminOverride.json() as Array<{ status: string }>;
+      expect(adminOverrideBody.some((deployment) => deployment.status === 'deployed')).toBe(true);
 
       const operatorCreateToken = await app.inject({
         method: 'POST',
@@ -92,4 +132,3 @@ describe('manager api auth mode', () => {
     }
   });
 });
-
