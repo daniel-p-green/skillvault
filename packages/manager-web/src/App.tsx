@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 
 import { DashboardPage } from './pages/DashboardPage.js';
@@ -12,7 +12,7 @@ import { DiscoverPage } from './pages/DiscoverPage.js';
 import { TelemetryPage } from './pages/TelemetryPage.js';
 import { EvalsPage } from './pages/EvalsPage.js';
 import { AccessPage } from './pages/AccessPage.js';
-import { apiGet } from './services/http.js';
+import { API_BASE, apiGet } from './services/http.js';
 
 type PageKey = 'dashboard' | 'installed' | 'skill' | 'adapters' | 'deploy' | 'audit' | 'discover' | 'telemetry' | 'evals' | 'access';
 
@@ -62,6 +62,7 @@ function pageForKey(key: PageKey) {
 
 export function App() {
   const [page, setPage] = useState<PageKey>('dashboard');
+  const prefersReducedMotion = useReducedMotion();
   const health = useQuery({
     queryKey: ['health'],
     queryFn: () => apiGet<HealthResponse>('/health'),
@@ -69,19 +70,31 @@ export function App() {
   });
 
   const selected = useMemo(() => NAV_ITEMS.find((item) => item.key === page), [page]);
+  const managerApiLabel = useMemo(() => {
+    try {
+      const apiUrl = new URL(API_BASE);
+      const normalizedPath = apiUrl.pathname !== '/' ? apiUrl.pathname : '';
+      return `${apiUrl.host}${normalizedPath}`;
+    } catch {
+      return API_BASE;
+    }
+  }, []);
 
   return (
     <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       <header className="topbar">
         <div className="status-row">
           <span className={`status-dot ${health.data?.ok ? 'live' : 'down'}`} />
           <span className="status-text">
-            {health.data?.ok ? 'Manager API live on :4646' : health.isLoading ? 'Checking manager API...' : 'Manager API unavailable'}
+            {health.data?.ok ? `Manager API live at ${managerApiLabel}` : health.isLoading ? 'Checking manager API...' : 'Manager API unavailable'}
           </span>
         </div>
         <h1 className="brand">SkillVault Manager</h1>
         <p className="subtitle">
-          Skill manager for devs and power users: discover across ecosystems, scan and receipt for security always, benchmark outcomes, and deploy safely across tools.
+          All-in-one skill manager for devs and power users: discover across ecosystems, scan and receipt for security always, benchmark outcomes, and deploy safely across tools.
         </p>
       </header>
 
@@ -92,9 +105,9 @@ export function App() {
               key={item.key}
               className={`nav-button ${item.key === page ? 'active' : ''}`}
               onClick={() => setPage(item.key)}
-              initial={{ opacity: 0, x: -12 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, x: -12 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.03 * index + 0.02, duration: 0.28 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.03 * index + 0.02, duration: 0.28 }}
               type="button"
             >
               <span className="nav-label">{item.label}</span>
@@ -103,12 +116,12 @@ export function App() {
           ))}
         </aside>
 
-        <main>
+        <main id="main-content" tabIndex={-1}>
           <motion.div
             key={page}
-            initial={{ opacity: 0, y: 10 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.26, ease: 'easeOut' }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.26, ease: 'easeOut' }}
           >
             {pageForKey(page)}
           </motion.div>

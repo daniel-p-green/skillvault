@@ -200,6 +200,8 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:4646/skills
 - Benchmarking: [`docs/benchmarking.md`](./docs/benchmarking.md)
 - JSON + manager schemas: [`docs/schemas.md`](./docs/schemas.md)
 - Product docs: [`docs/product/JTBD.md`](./docs/product/JTBD.md)
+- Product use cases: [`docs/product/use-cases.md`](./docs/product/use-cases.md)
+- Positioning research: [`docs/product/security-first-positioning.md`](./docs/product/security-first-positioning.md)
 - PRD v0.3: [`docs/PRD.md`](./docs/PRD.md)
 
 ## License

@@ -140,6 +140,9 @@ describe('manager web app', () => {
   it('renders dashboard with seeded manager summary', async () => {
     renderApp();
     await screen.findByRole('heading', { level: 2, name: 'Overview' });
+    await waitFor(() => {
+      expect(screen.getByText(/Manager API live at/i)).toBeTruthy();
+    });
     await screen.findByText('Skills in Vault');
     expect(screen.getByText('PASS / WARN / FAIL')).toBeTruthy();
     await waitFor(() => {
@@ -321,12 +324,25 @@ describe('manager web app', () => {
     await screen.findByRole('heading', { level: 2, name: 'Discover & Import' });
 
     fireEvent.click(await screen.findByRole('button', { name: /Use URL/i }));
+    await screen.findByText('URL Import Security Checklist');
+    fireEvent.click(screen.getByLabelText(/reviewed the source repository/i));
+    fireEvent.click(screen.getByLabelText(/understand which commands, prompts, or tool actions/i));
+    fireEvent.click(screen.getByLabelText(/only deploy after deterministic scan findings and receipt verification/i));
     fireEvent.click(screen.getByRole('button', { name: /Import and Deploy/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/"skillId": "imported-skill"/)).toBeTruthy();
       expect(screen.getByText(/"deployments"/)).toBeTruthy();
     });
+  });
+
+  it('blocks URL import until security checklist is complete', async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Discover & Import/i }));
+    await screen.findByRole('heading', { level: 2, name: 'Discover & Import' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Use URL/i }));
+    await screen.findByText(/URL import is blocked until the security checklist is complete/i);
   });
 
   it('renders audit stale and drift findings', async () => {

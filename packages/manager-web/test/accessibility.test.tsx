@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from '../src/App.js';
@@ -45,12 +45,13 @@ describe('navigation accessibility', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
   it('exposes all primary views as keyboard-reachable nav buttons', async () => {
     renderApp();
-    await screen.findByText('SkillVault Manager');
+    await screen.findByRole('heading', { level: 1, name: 'SkillVault Manager' });
     const nav = screen.getByLabelText('Primary navigation');
 
     for (const label of [
@@ -70,5 +71,22 @@ describe('navigation accessibility', () => {
       expect(button).toBeTruthy();
       expect((button as HTMLButtonElement).type).toBe('button');
     }
+  });
+
+  it('provides a skip link and labeled token input for keyboard and screen reader users', async () => {
+    renderApp();
+    await screen.findByRole('heading', { level: 1, name: 'SkillVault Manager' });
+
+    const skipLink = screen.getByRole('link', { name: /skip to main content/i });
+    expect(skipLink.getAttribute('href')).toBe('#main-content');
+    const main = document.getElementById('main-content');
+    expect(main).toBeTruthy();
+    expect(main?.getAttribute('tabindex')).toBe('-1');
+
+    const nav = screen.getByLabelText('Primary navigation');
+    fireEvent.click(within(nav).getByRole('button', { name: /^Access\b/i }));
+
+    await screen.findByRole('heading', { level: 2, name: 'Access' });
+    expect(screen.getByLabelText('Bearer token')).toBeTruthy();
   });
 });

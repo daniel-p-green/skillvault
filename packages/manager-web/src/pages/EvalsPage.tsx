@@ -175,6 +175,24 @@ function conditionSortKey(conditionId: string): string {
 
 type EvalTab = 'regression' | 'benchmarks';
 
+const BENCHMARK_ACTION_GUIDE = [
+  {
+    id: 'promote',
+    title: 'Promote curated bundle',
+    detail: 'If curated_skill pass-rate delta is positive and error categories do not introduce new high-risk failures.'
+  },
+  {
+    id: 'investigate',
+    title: 'Investigate regressions',
+    detail: 'If self_generated_skill underperforms no_skill, inspect verifier outputs before wider deployment.'
+  },
+  {
+    id: 'stabilize',
+    title: 'Stabilize for reproducibility',
+    detail: 'Keep deterministic mode enabled for baseline comparisons and release readiness checks.'
+  }
+] as const;
+
 export function EvalsPage() {
   const [activeTab, setActiveTab] = useState<EvalTab>('regression');
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
@@ -383,6 +401,12 @@ export function EvalsPage() {
 
       {activeTab === 'benchmarks' ? (
         <>
+          <div className="record-card">
+            <h3>Benchmark Run Playbook</h3>
+            <p>Use benchmark mode to answer one question clearly: does this skill improve real task outcomes over no skill?</p>
+            <p className="table-subtle">Recommended sequence: pick config → keep deterministic mode on → run → compare deltas → inspect failure categories.</p>
+          </div>
+
           <div className="form-grid">
             <label className="field">
               Benchmark Config
@@ -480,6 +504,16 @@ export function EvalsPage() {
                     {toSignedPercent(benchmarkSource.deltas.self_generated_vs_no_skill?.pass_rate_delta ?? null)}
                   </div>
                 </article>
+              </div>
+
+              <h3>How to Use These Deltas</h3>
+              <div className="card-grid">
+                {BENCHMARK_ACTION_GUIDE.map((item) => (
+                  <article key={item.id} className="record-card">
+                    <h3>{item.title}</h3>
+                    <p>{item.detail}</p>
+                  </article>
+                ))}
               </div>
 
               <h3>Error Categories by Condition</h3>

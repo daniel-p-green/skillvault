@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_MANAGER_API_URL || 'http://127.0.0.1:4646').replace(/\/$/, '');
+export const API_BASE = (import.meta.env.VITE_MANAGER_API_URL || 'http://127.0.0.1:4646').replace(/\/$/, '');
 export const API_TOKEN_STORAGE_KEY = 'skillvault_manager_token';
 let runtimeApiToken: string | null = null;
 
